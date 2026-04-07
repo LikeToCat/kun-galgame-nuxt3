@@ -1,0 +1,82 @@
+package handler
+
+import (
+	"kun-galgame-api/internal/middleware"
+	"kun-galgame-api/internal/user/dto"
+	"kun-galgame-api/internal/user/service"
+	"kun-galgame-api/pkg/response"
+	"kun-galgame-api/pkg/utils"
+
+	"github.com/gofiber/fiber/v2"
+)
+
+type OAuthHandler struct {
+	authService *service.AuthService
+}
+
+func NewOAuthHandler(authService *service.AuthService) *OAuthHandler {
+	return &OAuthHandler{authService: authService}
+}
+
+// Callback handles the OAuth code exchange: code → token → userinfo → session.
+// POST /api/auth/oauth/callback
+func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
+	var req dto.OAuthCallbackRequest
+	if err := utils.ParseAndValidate(c, &req); err != nil {
+		return response.Error(c, err)
+	}
+
+	session, appErr := h.authService.OAuthCallback(c.Context(), &req)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "kun_session",
+		Value:    session.Token,
+		MaxAge:   7 * 24 * 3600, // 7 days
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
+		Path:     "/",
+	})
+
+	return response.OK(c, session.User)
+}
+
+// Logout clears the session.
+// POST /api/auth/logout
+func (h *OAuthHandler) Logout(c *fiber.Ctx) error {
+	token := c.Cookies("kun_session")
+	if token != "" {
+		_ = h.authService.Logout(c.Context(), token)
+	}
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "kun_session",
+		Value:    "",
+		MaxAge:   -1,
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
+		Path:     "/",
+	})
+
+	return response.OKMessage(c, "已登出")
+}
+
+// Me returns the current authenticated user's profile.
+// GET /api/auth/me
+func (h *OAuthHandler) Me(c *fiber.Ctx) error {
+	user, err := middleware.MustGetUser(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+
+	profile, appErr := h.authService.GetProfile(c.Context(), user.UID)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	return response.OK(c, profile)
+}
