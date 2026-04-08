@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import {
   kunUserGalgameNavItem,
   type KUN_USER_PAGE_GALGAME_TYPE
@@ -18,11 +17,10 @@ const pageData = reactive({
   userId: props.uid
 })
 
-const { data, status } = await useFetch(`/api/user/${props.uid}/galgames`, {
-  method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
-})
+const { data, status } = await useKunFetch<{
+  items: GalgameCard[]
+  total: number
+}>(() => `/user/${props.uid}/galgames`, { query: pageData })
 </script>
 
 <template>
@@ -38,19 +36,19 @@ const { data, status } = await useFetch(`/api/user/${props.uid}/galgames`, {
       size="sm"
     />
 
-    <div class="flex flex-col space-y-3" v-if="data && data.galgames.length">
-      <GalgameCard :is-transparent="true" :galgames="data.galgames" />
+    <div class="flex flex-col space-y-3" v-if="data && data.items.length">
+      <GalgameCard :is-transparent="true" :galgames="data.items" />
 
       <KunPagination
-        v-if="data.totalCount > pageData.limit"
+        v-if="data.total > pageData.limit"
         v-model:current-page="pageData.page"
-        :total-page="Math.ceil(data.totalCount / pageData.limit)"
+        :total-page="Math.ceil(data.total / pageData.limit)"
         :is-loading="status === 'pending'"
       />
     </div>
 
     <KunNull
-      v-if="data && !data.galgames.length"
+      v-if="data && !data.items.length"
       description="这只笨蛋萝莉没有发布过任何 Galgame"
     />
   </div>

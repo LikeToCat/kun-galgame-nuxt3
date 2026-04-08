@@ -34,11 +34,15 @@ func Error(c *fiber.Ctx, err *errors.AppError) error {
 }
 
 // Paginated sends a paginated list response.
-func Paginated(c *fiber.Ctx, data any, total int64) error {
+//
+//	{ "code": 0, "message": "成功", "data": { "items": [...], "total": 42 } }
+func Paginated(c *fiber.Ctx, items any, total int64) error {
 	return c.JSON(fiber.Map{
 		"code":    errors.CodeOK,
 		"message": "成功",
-		"data":    data,
-		"total":   total,
+		"data": fiber.Map{
+			"items": items,
+			"total": total,
+		},
 	})
 }

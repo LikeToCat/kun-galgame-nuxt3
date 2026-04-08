@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
-const { data } = await useFetch(`/api/home`, {
-  method: 'GET',
-  ...kungalgameResponseHandler
-})
+const { data } = await useKunFetch<{
+  galgames: HomeGalgame[]
+  topics: HomeTopic[]
+}>('/home')
 </script>
 
 <template>

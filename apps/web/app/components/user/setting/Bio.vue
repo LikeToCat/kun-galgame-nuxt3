@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   user: UserInfo
 }>()
@@ -18,11 +16,9 @@ const handleChangeBio = async () => {
     return
   }
 
-  const result = await $fetch('/api/user/bio', {
+  const result = await kunFetch('/user/bio', {
     method: 'PUT',
-    watch: false,
-    body: { bio: bioValue.value },
-    ...kungalgameResponseHandler
+    body: { bio: bioValue.value }
   })
 
   if (result) {
