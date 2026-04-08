@@ -57,6 +57,6 @@ watch(
 <template>
   <div
     ref="editorDiv"
-    class="scrollbar-hide flex-1 overflow-y-scroll overscroll-none"
+    class="scrollbar-hide flex-1 overflow-y-scroll overscroll-none max-h-[500px]"
   />
 </template>
