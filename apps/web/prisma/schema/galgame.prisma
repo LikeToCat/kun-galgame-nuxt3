@@ -39,6 +39,14 @@ model galgame {
   favorite    galgame_favorite[]
   contributor galgame_contributor[]
 
+  // Denormalized counts
+  like_count        Int @default(0)
+  favorite_count    Int @default(0)
+  resource_count    Int @default(0)
+  comment_count     Int @default(0)
+  contributor_count Int @default(0)
+  rating_count      Int @default(0)
+
   created DateTime @default(now())
   updated DateTime @updatedAt
 }
@@ -144,7 +152,7 @@ model galgame_engine {
   id          Int      @id @default(autoincrement())
   name        String   @unique
   description String   @default("")
-  alias       String[] @default([])
+  alias       Json     @default("[]") @db.JsonB
 
   galgame galgame_engine_relation[]
 

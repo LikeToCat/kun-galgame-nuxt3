@@ -40,6 +40,8 @@ model topic_poll_option {
 
     vote topic_poll_vote[]
 
+    vote_count Int @default(0)
+
     created DateTime @default(now())
     updated DateTime @updatedAt
 }

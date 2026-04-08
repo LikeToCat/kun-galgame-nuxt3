@@ -14,6 +14,9 @@ model user {
     daily_image_count          Int    @default(0)
     daily_toolset_upload_count Int    @default(0)
 
+    // OAuth
+    oauth_account oauth_account[]
+
     // SU only
     todo        todo[]
     update_log  update_log[]
@@ -111,4 +114,18 @@ model user_follow {
     updated DateTime @updatedAt
 
     @@unique([follower_id, followed_id])
+}
+
+model oauth_account {
+    id       Int    @id @default(autoincrement())
+    user_id  Int
+    provider String @default("kun-oauth") @db.VarChar(50)
+    sub      String @unique @db.VarChar(255)
+
+    user user @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+    created DateTime @default(now())
+    updated DateTime @updatedAt
+
+    @@index([user_id])
 }

@@ -7,7 +7,7 @@ model galgame_rating {
     overall       Int
     view          Int      @default(0)
     // ba_saku - ba_saku opus, plot - plot opus, moe - moe opus, daily - daily opus
-    galgame_type  String[] @default([])
+    galgame_type  Json     @default("[]") @db.JsonB
     // not_started, in_progress, finished_one, finished_main, finished_all, dropped
     play_status   String   @default("not_started")
     short_summary String   @default("") @db.VarChar(1314)
@@ -42,6 +42,9 @@ model galgame_rating {
 
     like    galgame_rating_like[]
     comment galgame_rating_comment[]
+
+    like_count    Int @default(0)
+    comment_count Int @default(0)
 
     // user can rating a galgame only once
     @@unique([user_id, galgame_id])

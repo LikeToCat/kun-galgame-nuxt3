@@ -11,6 +11,8 @@ model galgame_comment {
 
   like galgame_comment_like[]
 
+  like_count Int @default(0)
+
   created DateTime @default(now())
   updated DateTime @updatedAt
 }

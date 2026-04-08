@@ -9,7 +9,7 @@ model galgame_toolset {
   type                 String    @default("")
   language             String    @default("")
   platform             String    @default("")
-  homepage             String[]  @default([])
+  homepage             Json      @default("[]") @db.JsonB
   resource_update_time DateTime  @default(now())
   edited               DateTime?
   version              String    @default("") @db.VarChar(233)
@@ -99,7 +99,7 @@ model galgame_toolset_category {
   id          Int      @id @default(autoincrement())
   name        String   @unique
   description String   @default("")
-  alias       String[] @default([])
+  alias       Json     @default("[]") @db.JsonB
 
   toolset galgame_toolset_category_relation[]
 

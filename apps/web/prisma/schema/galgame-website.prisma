@@ -10,7 +10,7 @@ model galgame_website {
     language    String   @default("JA")
     // all, r18
     age_limit   String   @default("all")
-    domain      String[] @default([])
+    domain      Json     @default("[]") @db.JsonB
 
     category_id Int
     category    galgame_website_category @relation(fields: [category_id], references: [id])
@@ -24,6 +24,10 @@ model galgame_website {
     // TODO:
     user_id Int  @default(2)
     user    user @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+    like_count     Int @default(0)
+    favorite_count Int @default(0)
+    comment_count  Int @default(0)
 
     created DateTime @default(now())
     updated DateTime @updatedAt

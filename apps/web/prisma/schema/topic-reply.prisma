@@ -18,6 +18,11 @@ model topic_reply {
     like    topic_reply_like[]
     dislike topic_reply_dislike[]
 
+    // Denormalized counts
+    like_count    Int @default(0)
+    dislike_count Int @default(0)
+    comment_count Int @default(0)
+
     created DateTime @default(now())
     updated DateTime @updatedAt
 }

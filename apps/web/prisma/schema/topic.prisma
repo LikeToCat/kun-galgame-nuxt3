@@ -28,12 +28,43 @@ model topic {
     dislike  topic_dislike[]
     favorite topic_favorite[]
 
-    section topic_section_relation[]
+    section  topic_section_relation[]
+    tag_rel  topic_tag_relation[]
 
     poll            topic_poll[]
 
+    // Denormalized counts
+    like_count     Int @default(0)
+    dislike_count  Int @default(0)
+    reply_count    Int @default(0)
+    comment_count  Int @default(0)
+    favorite_count Int @default(0)
+    upvote_count   Int @default(0)
+
     created DateTime @default(now())
     updated DateTime @updatedAt
+}
+
+model topic_tag {
+    id   Int    @id @default(autoincrement())
+    name String @unique
+
+    topic topic_tag_relation[]
+
+    created DateTime @default(now())
+    updated DateTime @updatedAt
+}
+
+model topic_tag_relation {
+    topic_id Int
+    topic    topic     @relation(fields: [topic_id], references: [id], onDelete: Cascade)
+    tag_id   Int
+    tag      topic_tag @relation(fields: [tag_id], references: [id], onDelete: Cascade)
+
+    created DateTime @default(now())
+    updated DateTime @updatedAt
+
+    @@id([topic_id, tag_id])
 }
 
 model topic_section {

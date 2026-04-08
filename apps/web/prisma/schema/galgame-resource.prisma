@@ -19,11 +19,28 @@ model galgame_resource {
   user_id    Int
   user       user    @relation("user_galgame_resource", fields: [user_id], references: [id], onDelete: Cascade)
 
-  link galgame_resource_link[]
-  like galgame_resource_like[]
+  link         galgame_resource_link[]
+  like         galgame_resource_like[]
+  provider_rel galgame_resource_provider[]
+
+  // Denormalized counts
+  like_count Int @default(0)
 
   created DateTime @default(now())
   updated DateTime @updatedAt
+}
+
+model galgame_resource_provider {
+  id          Int    @id @default(autoincrement())
+  resource_id Int
+  resource    galgame_resource @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+  name        String
+
+  created DateTime @default(now())
+  updated DateTime @updatedAt
+
+  @@unique([resource_id, name])
+  @@index([resource_id])
 }
 
 model galgame_resource_link {
