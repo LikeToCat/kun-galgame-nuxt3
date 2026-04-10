@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"log/slog"
+
 	"kun-galgame-api/internal/middleware"
 	"kun-galgame-api/internal/user/dto"
 	"kun-galgame-api/internal/user/service"
@@ -22,7 +24,13 @@ func NewOAuthHandler(authService *service.AuthService) *OAuthHandler {
 // POST /api/auth/oauth/callback
 func (h *OAuthHandler) Callback(c *fiber.Ctx) error {
 	var req dto.OAuthCallbackRequest
+	slog.Debug("OAuth callback",
+		"content-type", c.Get("Content-Type"),
+		"body", string(c.Body()),
+	)
+
 	if err := utils.ParseAndValidate(c, &req); err != nil {
+		slog.Error("OAuth callback 验证失败", "error", err.Message, "body", string(c.Body()))
 		return response.Error(c, err)
 	}
 

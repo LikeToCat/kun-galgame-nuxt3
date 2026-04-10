@@ -7,7 +7,7 @@ import (
 )
 
 func (a *App) setupRoutes() {
-	a.Fiber.Use(fiberCors.New(middleware.CORS("http://127.0.0.1:1007,https://www.kungal.com")))
+	a.Fiber.Use(fiberCors.New(middleware.CORS("http://127.0.0.1:2333,https://www.kungal.com")))
 
 	api := a.Fiber.Group("/api")
 

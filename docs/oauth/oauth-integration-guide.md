@@ -1,6 +1,6 @@
-# 鲲 Galgame OAuth 接入指南
+# KUN OAuth 接入指南
 
-本文档面向需要接入 鲲 Galgame OAuth 系统的第三方网站（如 kungal-nuxt、moyu-moe 等），提供完整的 OAuth 2.0 Authorization Code + PKCE 对接流程。
+本文档面向需要接入 KUN OAuth 系统的第三方网站（如 kungal-nuxt、moyu-moe 等），提供完整的 OAuth 2.0 Authorization Code + PKCE 对接流程。
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 1.1 注册 OAuth 客户端
 
-在 鲲 Galgame OAuth 管理后台创建 OAuth 客户端，获得：
+在 KUN OAuth 管理后台创建 OAuth 客户端，获得：
 
 - `client_id` — 客户端标识符
 - `client_secret` — 客户端密钥（保密，仅用于服务端）
@@ -37,7 +37,7 @@
 ### 流程概览
 
 ```
-用户点击「使用 鲲 Galgame 账号登录」
+用户点击「使用 KUN 账号登录」
   ↓
 客户端生成 PKCE code_verifier + code_challenge
   ↓
@@ -170,14 +170,18 @@ export default defineEventHandler(async (event) => {
 
   // response 结构：
   // {
-  //   "access_token": "eyJhbGc...",
-  //   "token_type": "Bearer",
-  //   "expires_in": 900,
-  //   "refresh_token": "eyJhbGc...",
-  //   "scope": "openid profile"
+  //   "code": 0,
+  //   "message": "成功",
+  //   "data": {
+  //     "access_token": "eyJhbGc...",
+  //     "token_type": "Bearer",
+  //     "expires_in": 900,
+  //     "refresh_token": "eyJhbGc...",
+  //     "scope": "openid profile"
+  //   }
   // }
 
-  return response
+  return response.data
 })
 ```
 
@@ -192,11 +196,15 @@ const userInfo = await $fetch('https://oauth.kungal.com/api/v1/oauth/userinfo', 
 
 // 返回：
 // {
-//   "sub": "550e8400-e29b-41d4-a716-446655440000",  // 用户 UUID（唯一标识）
-//   "name": "KUN",
-//   "email": "kun@kungal.com",
-//   "picture": "https://...",
-//   "updated_at": 1234567890
+//   "code": 0,
+//   "message": "成功",
+//   "data": {
+//     "sub": "550e8400-e29b-41d4-a716-446655440000",  // 用户 UUID（唯一标识）
+//     "name": "KUN",
+//     "email": "kun@kungal.com",
+//     "picture": "https://...",
+//     "updated_at": 1234567890
+//   }
 // }
 ```
 
@@ -242,8 +250,8 @@ const response = await $fetch('https://oauth.kungal.com/api/v1/oauth/token', {
   },
 })
 
-// 返回新的 access_token 和 refresh_token（令牌轮换）
-// 必须用新的 refresh_token 替换旧的
+// 返回 { code: 0, data: { access_token, refresh_token, ... } }
+// 必须用新的 refresh_token 替换旧的（令牌轮换）
 ```
 
 **注意**：每次刷新都会返回新的 refresh_token，旧的会立即失效（token rotation）。
@@ -429,9 +437,10 @@ export default defineEventHandler(async (event) => {
   })
 
   // 2. 获取用户信息
-  const userInfo = await $fetch(`${config.oauthServerUrl}/oauth/userinfo`, {
-    headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+  const userInfoResp = await $fetch(`${config.oauthServerUrl}/oauth/userinfo`, {
+    headers: { Authorization: `Bearer ${tokenResponse.data.access_token}` },
   })
+  const userInfo = userInfoResp.data
 
   // 3. 在本站创建/查找用户（根据你的数据库逻辑）
   // ...

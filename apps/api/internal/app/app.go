@@ -1,6 +1,8 @@
 package app
 
 import (
+	"log/slog"
+
 	"kun-galgame-api/internal/common"
 	"kun-galgame-api/internal/infrastructure/cache"
 	"kun-galgame-api/internal/infrastructure/database"
@@ -79,5 +81,6 @@ func globalErrorHandler(c *fiber.Ctx, err error) error {
 	if appErr, ok := err.(*errors.AppError); ok {
 		return response.Error(c, appErr)
 	}
+	slog.Error("未处理的错误", "error", err.Error(), "path", c.Path(), "method", c.Method())
 	return response.Error(c, errors.ErrInternal("服务器内部错误"))
 }

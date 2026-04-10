@@ -1,13 +1,13 @@
-# 鲲 Galgame OAuth 接入 — Nuxt 项目实施提示词
+# KUN OAuth 接入 — Nuxt 项目实施提示词
 
-> 本文档是给 AI 编码助手（如 Claude）的提示词，用于在 Nuxt 3/4 项目中实现 鲲 Galgame OAuth 登录功能。
+> 本文档是给 AI 编码助手（如 Claude）的提示词，用于在 Nuxt 3/4 项目中实现 KUN OAuth 登录功能。
 > 将本文件内容作为 context 提供给 AI，它就能正确编写对接代码。
 
 ---
 
 ## 任务
 
-在当前 Nuxt 项目中接入 鲲 Galgame OAuth 2.0 登录系统，实现「使用 KUN 账号登录」功能。
+在当前 Nuxt 项目中接入 KUN OAuth 2.0 登录系统，实现「使用 KUN 账号登录」功能。
 
 ## OAuth Server 信息
 
@@ -30,21 +30,21 @@
 
 ```env
 # .env
-KUN_VISUAL_NOVEL_OAUTH_SERVER_URL=https://oauth.kungal.com/api/v1
-KUN_VISUAL_NOVEL_PUBLIC_OAUTH_CLIENT_ID=<从管理后台获取>
-KUN_VISUAL_NOVEL_OAUTH_CLIENT_SECRET=<从管理后台获取>
-KUN_VISUAL_NOVEL_PUBLIC_OAUTH_REDIRECT_URI=https://www.kungal.com/auth/callback
+NUXT_OAUTH_SERVER_URL=https://oauth.kungal.com/api/v1
+NUXT_PUBLIC_OAUTH_CLIENT_ID=<从管理后台获取>
+NUXT_OAUTH_CLIENT_SECRET=<从管理后台获取>
+NUXT_PUBLIC_OAUTH_REDIRECT_URI=https://www.kungal.com/auth/callback
 ```
 
 在 `nuxt.config.ts` 的 `runtimeConfig` 中配置：
 
 ```typescript
 runtimeConfig: {
-  oauthServerUrl: process.env.KUN_VISUAL_NOVEL_OAUTH_SERVER_URL,
-  oauthClientSecret: process.env.KUN_VISUAL_NOVEL_OAUTH_CLIENT_SECRET,
+  oauthServerUrl: process.env.NUXT_OAUTH_SERVER_URL,
+  oauthClientSecret: process.env.NUXT_OAUTH_CLIENT_SECRET,
   public: {
-    oauthClientId: process.env.KUN_VISUAL_NOVEL_PUBLIC_OAUTH_CLIENT_ID,
-    oauthRedirectUri: process.env.KUN_VISUAL_NOVEL_PUBLIC_OAUTH_REDIRECT_URI,
+    oauthClientId: process.env.NUXT_PUBLIC_OAUTH_CLIENT_ID,
+    oauthRedirectUri: process.env.NUXT_PUBLIC_OAUTH_REDIRECT_URI,
   },
 },
 ```
@@ -61,7 +61,7 @@ runtimeConfig: {
 
 ### 3. 登录触发（客户端）
 
-在登录页面添加一个「使用 鲲 Galgame 账号登录」按钮，点击后：
+在登录页面添加一个「使用 KUN 账号登录」按钮，点击后：
 
 1. 调用 `generateCodeVerifier()` 和 `generateCodeChallenge()` 和 `generateState()`
 2. 将 `code_verifier` 和 `state` 存入 `sessionStorage`
@@ -106,17 +106,21 @@ runtimeConfig: {
 }
 ```
 
-3. 用返回的 `access_token` 调用 `/oauth/userinfo` 获取用户信息：
+3. 用返回的 `data.access_token` 调用 `/oauth/userinfo` 获取用户信息：
 
 ```json
 // GET /oauth/userinfo, Authorization: Bearer <access_token>
 // 响应:
 {
-  "sub": "用户UUID（唯一标识）",
-  "name": "用户名",
-  "email": "邮箱",
-  "picture": "头像URL",
-  "updated_at": 1234567890
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "sub": "用户UUID（唯一标识）",
+    "name": "用户名",
+    "email": "邮箱",
+    "picture": "头像URL",
+    "updated_at": 1234567890
+  }
 }
 ```
 
@@ -150,7 +154,7 @@ POST /oauth/revoke
 
 ## API 响应格式
 
-所有 OAuth Server 的 API 响应（除 /oauth/token 外）使用统一格式：
+所有 OAuth Server 的 API 响应使用统一格式：
 
 ```json
 {
@@ -160,7 +164,7 @@ POST /oauth/revoke
 }
 ```
 
-`/oauth/token` 端点直接返回标准 OAuth token 响应（不包裹在 data 中）。
+包括 `/oauth/token` 和 `/oauth/userinfo`，实际数据都在 `data` 字段中。
 
 ## 错误处理
 

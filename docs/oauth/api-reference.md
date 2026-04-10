@@ -1,4 +1,4 @@
-# 鲲 Galgame OAuth API 参考
+# KUN OAuth API 参考
 
 所有 API 基础路径：`/api/v1`
 
@@ -47,11 +47,15 @@
 
 ```json
 {
-  "access_token": "eyJhbGc...",
-  "token_type": "Bearer",
-  "expires_in": 900,
-  "refresh_token": "eyJhbGc...",
-  "scope": "openid profile"
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "access_token": "eyJhbGc...",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "refresh_token": "eyJhbGc...",
+    "scope": "openid profile"
+  }
 }
 ```
 
@@ -97,11 +101,15 @@
 
 ```json
 {
-  "sub": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "KUN",
-  "email": "kun@kungal.com",
-  "picture": "https://...",
-  "updated_at": 1234567890
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "sub": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "KUN",
+    "email": "kun@kungal.com",
+    "picture": "https://...",
+    "updated_at": 1234567890
+  }
 }
 ```
 

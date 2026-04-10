@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const route = useRoute()
 
 const { showKUNGalgameHamburger, messageStatus } = storeToRefs(
@@ -15,7 +13,6 @@ const { isSnowing, toggleSnow, startSnow } = useKunSnowEffect()
 
 const router = useRouter()
 const canGoBack = ref(false)
-// const isShowUpdateAvatarModal = ref(false)
 
 const updateCanGoBack = () => {
   canGoBack.value = window.history.length > 2
@@ -29,24 +26,21 @@ watch(
 )
 
 onMounted(async () => {
-  const result = await $fetch('/api/user/status', {
-    method: 'GET',
-    ...kungalgameResponseHandler
-  })
-  if (result) {
-    isCheckIn.value = result.isCheckIn
-    moemoepoint.value = result.moemoepoints
-    messageStatus.value = result.hasNewMessage ? 'new' : 'online'
+  if (id.value) {
+    const result = await kunFetch<{
+      moemoepoints: number
+      isCheckIn: boolean
+      hasNewMessage: boolean
+    }>('/user/status')
+    if (result) {
+      isCheckIn.value = result.isCheckIn
+      moemoepoint.value = result.moemoepoints
+      messageStatus.value = result.hasNewMessage ? 'new' : 'online'
+    }
   }
 
-  // if (uid.value && !avatar.value) {
-  //   isShowUpdateAvatarModal.value = true
-  // }
-
   updateCanGoBack()
-
   startSnow()
-
   router.afterEach(() => {
     updateCanGoBack()
   })

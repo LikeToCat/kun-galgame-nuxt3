@@ -173,15 +173,21 @@ func (s *AuthService) exchangeCode(code, codeVerifier string) (*oauthTokenRespon
 
 	respBody, _ := io.ReadAll(resp.Body)
 
-	// /oauth/token returns raw OAuth format directly
-	var tokenResp oauthTokenResponse
-	if err := json.Unmarshal(respBody, &tokenResp); err != nil {
+	// /oauth/token returns { code: 0, message: "成功", data: { access_token, ... } }
+	var wrapper struct {
+		Code int                 `json:"code"`
+		Data *oauthTokenResponse `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &wrapper); err != nil {
 		return nil, fmt.Errorf("解析 token 响应失败: %w, body: %s", err, string(respBody))
 	}
-	if tokenResp.AccessToken == "" {
+	if wrapper.Code != 0 || wrapper.Data == nil {
+		return nil, fmt.Errorf("token 交换失败: code=%d, body: %s", wrapper.Code, string(respBody))
+	}
+	if wrapper.Data.AccessToken == "" {
 		return nil, fmt.Errorf("token 响应无 access_token, body: %s", string(respBody))
 	}
-	return &tokenResp, nil
+	return wrapper.Data, nil
 }
 
 func (s *AuthService) fetchUserInfo(accessToken string) (*oauthUserInfo, error) {
@@ -196,7 +202,7 @@ func (s *AuthService) fetchUserInfo(accessToken string) (*oauthUserInfo, error) 
 
 	respBody, _ := io.ReadAll(resp.Body)
 
-	// /oauth/userinfo returns wrapped format {code, message, data: {...}}
+	// /oauth/userinfo returns { code: 0, message: "成功", data: { sub, name, ... } }
 	var wrapper struct {
 		Code int            `json:"code"`
 		Data *oauthUserInfo `json:"data"`
@@ -245,14 +251,17 @@ func (s *AuthService) RefreshOAuthToken(refreshToken string) (*oauthTokenRespons
 
 	respBody, _ := io.ReadAll(resp.Body)
 
-	var tokenResp oauthTokenResponse
-	if err := json.Unmarshal(respBody, &tokenResp); err != nil {
+	var wrapper struct {
+		Code int                 `json:"code"`
+		Data *oauthTokenResponse `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &wrapper); err != nil {
 		return nil, err
 	}
-	if tokenResp.AccessToken == "" {
+	if wrapper.Code != 0 || wrapper.Data == nil || wrapper.Data.AccessToken == "" {
 		return nil, fmt.Errorf("刷新 token 失败: %s", string(respBody))
 	}
-	return &tokenResp, nil
+	return wrapper.Data, nil
 }
 
 // ──────────────────────────────────────────

@@ -16,6 +16,11 @@ interface KunApiResponse<T> {
 const CODE_AUTH_EXPIRED = 205
 const CODE_BIZ_ERROR = 233
 
+const getApiBase = () => {
+  const config = useRuntimeConfig()
+  return config.public.apiBaseUrl as string
+}
+
 const handleError = async (code: number, message: string) => {
   if (code === CODE_AUTH_EXPIRED) {
     const navigateCookie = Cookies.get('kun-is-navigate-to-login')
@@ -43,26 +48,24 @@ const handleError = async (code: number, message: string) => {
  * Returns the unwrapped data, or null on error.
  *
  * @example
- * // Simple mutation
  * const result = await kunFetch<string>('/user/bio', {
  *   method: 'PUT',
  *   body: { bio: 'hello' }
  * })
  * if (result) { useMessage('更新成功', 'success') }
- *
- * @example
- * // Paginated data in imperative context
- * const result = await kunFetch<{ items: Topic[], total: number }>('/topic', {
- *   query: { page: 1, limit: 10 }
- * })
- * if (result) { topics.value = result.items }
  */
 export const kunFetch = async <T>(
   url: string,
   options?: Record<string, unknown>
 ): Promise<T | null> => {
   try {
-    const resp = await $fetch<KunApiResponse<T>>(`/api${url}`, options)
+    const resp = await $fetch<KunApiResponse<T>>(
+      `${getApiBase()}/api${url}`,
+      {
+        credentials: 'include',
+        ...options
+      }
+    )
 
     if (!resp) {
       useMessage('网络请求失败，请稍后重试', 'error')
@@ -84,26 +87,16 @@ export const kunFetch = async <T>(
 /**
  * useKunFetch - SSR-safe composable for data fetching.
  * Wraps useFetch, automatically unwraps { code, data } via transform.
- * data.value is T | null (already unwrapped, no need to access .data).
+ * data.value is T | null (already unwrapped).
  *
  * @example
- * // Simple GET
  * const { data } = await useKunFetch<HomeData>('/home')
  * // data.value?.galgames
  *
  * @example
- * // With reactive query (auto-refetches on change)
- * const pageData = reactive({ page: 1, limit: 10, category: 'galgame' })
  * const { data, status } = await useKunFetch<{ items: Topic[], total: number }>(
  *   '/topic',
  *   { query: pageData }
- * )
- * // data.value?.items, data.value?.total
- *
- * @example
- * // Dynamic URL
- * const { data } = await useKunFetch<UserProfile>(
- *   () => `/user/${uid}`
  * )
  */
 export const useKunFetch = <T>(
@@ -111,8 +104,10 @@ export const useKunFetch = <T>(
   options?: Record<string, unknown>
 ) => {
   const resolvedUrl = typeof url === 'function' ? url : () => url
+  const apiBase = getApiBase()
 
-  return useFetch(() => `/api${resolvedUrl()}`, {
+  return useFetch(() => `${apiBase}/api${resolvedUrl()}`, {
+    credentials: 'include',
     ...options,
     transform: (resp: KunApiResponse<T>) => {
       if (!resp || resp.code !== 0) {

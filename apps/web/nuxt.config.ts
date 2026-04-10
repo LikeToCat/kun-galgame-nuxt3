@@ -24,8 +24,8 @@ export default defineNuxtConfig({
     layoutTransition: { name: 'kun-page', mode: 'out-in' },
 
     // https://github.com/nuxt/nuxt/issues/26565#issuecomment-3448517709
-    baseURL: '/',
-    buildAssetsDir: `/_nuxt/v${Math.floor(Date.now() / 1000).toString()}/`
+    baseURL: '/'
+    // buildAssetsDir: `/_nuxt/v${Math.floor(Date.now() / 1000).toString()}/`
   },
 
   experimental: {
@@ -53,13 +53,19 @@ export default defineNuxtConfig({
   ],
 
   runtimeConfig: {
+    // Server-only: used by useFetch during SSR to directly reach Go API
+    apiBaseUrl: process.env.API_BASE_URL || 'http://127.0.0.1:2334',
+
     public: {
       KUN_GALGAME_URL: process.env.KUN_GALGAME_URL,
       KUN_VISUAL_NOVEL_FORUM_YANDEX_VERIFICATION:
         process.env.KUN_VISUAL_NOVEL_FORUM_YANDEX_VERIFICATION,
       KUN_VISUAL_NOVEL_VERSION: appVersion,
 
-      // OAuth (public — only client_id and redirect_uri, no secrets)
+      // Go API base URL (client-side, relative — goes through browser)
+      apiBaseUrl: process.env.API_BASE_URL || 'http://127.0.0.1:2334',
+
+      // OAuth
       oauthServerUrl:
         process.env.OAUTH_SERVER_URL || 'http://127.0.0.1:9277/api/v1',
       oauthClientId: process.env.OAUTH_CLIENT_ID || '',
@@ -68,11 +74,7 @@ export default defineNuxtConfig({
     }
   },
 
-  routeRules: {
-    '/api/**': {
-      proxy: { to: 'http://127.0.0.1:2334/**' }
-    }
-  },
+  routeRules: {},
 
   imports: {
     dirs: ['./composables', './config', './utils']
