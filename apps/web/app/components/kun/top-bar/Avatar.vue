@@ -78,7 +78,7 @@ const statusClasses = computed(() => {
   </div>
 </template>
 
-<style lang="scss" scoped>
+<style  scoped>
 .new {
   animation: kun-pulse 1s infinite;
 }

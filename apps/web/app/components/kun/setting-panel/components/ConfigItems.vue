@@ -140,7 +140,7 @@ watch(
   </div>
 </template>
 
-<style lang="scss" scoped>
+<style  scoped>
 .item-move,
 .item-enter-active,
 .item-leave-active {

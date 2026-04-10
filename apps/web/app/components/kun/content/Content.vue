@@ -33,7 +33,7 @@ const sanitizeConfig = {
   </div>
 </template>
 
-<style scoped lang="scss">
+<style scoped >
 .kun-prose {
   :deep(.kun-spoiler) {
     position: relative;

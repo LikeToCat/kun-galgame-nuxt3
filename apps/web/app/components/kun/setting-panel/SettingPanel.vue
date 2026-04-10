@@ -52,7 +52,7 @@ const { showKUNGalgamePanel } = storeToRefs(useTempSettingStore())
   </KunModal>
 </template>
 
-<style lang="scss" scoped>
+<style  scoped>
 .item-move,
 .item-enter-active,
 .item-leave-active {

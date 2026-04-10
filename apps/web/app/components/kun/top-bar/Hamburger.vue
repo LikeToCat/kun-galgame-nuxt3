@@ -82,7 +82,7 @@ watch(
   </Transition>
 </template>
 
-<style lang="scss" scoped>
+<style  scoped>
 .slide-enter-active,
 .slide-leave-active {
   transition: all 0.3s ease-in-out;

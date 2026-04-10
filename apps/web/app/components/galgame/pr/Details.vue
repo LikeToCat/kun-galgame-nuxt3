@@ -130,7 +130,7 @@ const handleMergeRequest = async () => {
   </div>
 </template>
 
-<style lang="scss" scoped>
+<style  scoped>
 .diff {
   :deep(h2) {
     margin-bottom: 10px;
