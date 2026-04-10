@@ -67,7 +67,7 @@ type SearchConfig struct {
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Port: envOrDefault("SERVER_PORT", "1007"),
+			Port: envOrDefault("SERVER_PORT", "2334"),
 			Mode: envOrDefault("SERVER_MODE", "dev"),
 		},
 		Database: DatabaseConfig{

@@ -6,3 +6,15 @@ generator client {
 datasource db {
     provider = "postgresql"
 }
+
+// Managed by Go migration tool (apps/api/cmd/migrate), not Prisma.
+// Declared here only to prevent `prisma db push` from dropping it.
+// Do NOT use this model in application code.
+model migrations {
+    id         Int      @id
+    name       String   @unique @db.VarChar(255)
+    applied_at DateTime @default(now())
+
+    @@map("_migrations")
+    @@ignore
+}

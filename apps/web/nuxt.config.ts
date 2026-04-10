@@ -37,7 +37,7 @@ export default defineNuxtConfig({
 
   devServer: {
     host: '127.0.0.1',
-    port: 1007
+    port: 2333
   },
 
   modules: [
@@ -53,20 +53,24 @@ export default defineNuxtConfig({
   ],
 
   runtimeConfig: {
-    KUN_GALGAME_API: process.env.KUN_GALGAME_API,
-
-    REDIS_HOST: process.env.REDIS_HOST,
-    REDIS_PORT: process.env.REDIS_PORT,
-
-    JWT_ISS: process.env.JWT_ISS,
-    JWT_AUD: process.env.JWT_AUD,
-    JWT_SECRET: process.env.JWT_SECRET,
-
     public: {
       KUN_GALGAME_URL: process.env.KUN_GALGAME_URL,
       KUN_VISUAL_NOVEL_FORUM_YANDEX_VERIFICATION:
         process.env.KUN_VISUAL_NOVEL_FORUM_YANDEX_VERIFICATION,
-      KUN_VISUAL_NOVEL_VERSION: appVersion
+      KUN_VISUAL_NOVEL_VERSION: appVersion,
+
+      // OAuth (public — only client_id and redirect_uri, no secrets)
+      oauthServerUrl:
+        process.env.OAUTH_SERVER_URL || 'http://127.0.0.1:9277/api/v1',
+      oauthClientId: process.env.OAUTH_CLIENT_ID || '',
+      oauthRedirectUri:
+        process.env.OAUTH_REDIRECT_URI || 'http://127.0.0.1:2333/auth/callback'
+    }
+  },
+
+  routeRules: {
+    '/api/**': {
+      proxy: { to: 'http://127.0.0.1:2334/**' }
     }
   },
 
@@ -161,18 +165,6 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    experimental: {
-      websocket: true,
-      tasks: true
-    },
-    rollupConfig: {
-      external: [/^@prisma\//, /\.wasm$/]
-    },
-    scheduledTasks: {
-      '0 0 * * *': ['reset-daily'],
-      '0 * * * *': ['cleanup-toolset-resource']
-      // '* * * * *': ['cleanup-toolset-resource']
-    },
     typescript: {
       tsConfig: {
         ...sharedTsConfig
