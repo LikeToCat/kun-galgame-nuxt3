@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { UpdateGalgameEnginePayload } from '~/components/galgame/types'
 
 const { role } = usePersistUserStore()
@@ -19,12 +18,11 @@ const editingEngine = ref<UpdateGalgameEnginePayload>(
   {} as UpdateGalgameEnginePayload
 )
 
-const { data, status } = await useFetch(
-  `/api/galgame-engine/${engineId.value}`,
+const { data, status } = await useKunFetch(
+  `/galgame-engine/${engineId.value}`,
   {
     method: 'GET',
-    query: pageData,
-    ...kungalgameResponseHandler
+    query: pageData
   }
 )
 
@@ -43,11 +41,9 @@ const openEditEngineModal = () => {
 }
 
 const handleUpdateEngine = async (data: UpdateGalgameEnginePayload) => {
-  const result = await $fetch(`/api/galgame-engine`, {
+  const result = await kunFetch(`/galgame-engine`, {
     method: 'PUT',
-    watch: false,
-    body: data,
-    ...kungalgameResponseHandler
+    body: data
   })
 
   if (result) {

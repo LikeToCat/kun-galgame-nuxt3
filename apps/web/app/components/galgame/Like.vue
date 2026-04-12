@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   galgameId: number
   targetUserId: number
@@ -13,11 +11,9 @@ const isLiked = ref(id && props.isLiked)
 const likesCount = ref(props.likeCount)
 
 const toggleLikeGalgame = async () => {
-  const result = await $fetch(`/api/galgame/${props.galgameId}/like`, {
+  const result = await kunFetch(`/galgame/${props.galgameId}/like`, {
     method: 'PUT',
-    watch: false,
-    body: { galgameId: props.galgameId },
-    ...kungalgameResponseHandler
+    body: { galgameId: props.galgameId }
   })
 
   if (result) {

@@ -15,7 +15,6 @@ import {
   updateGalgameRatingSchema
 } from '~/validations/galgame-rating'
 import { usePersistEditGalgameRatingStore } from '~/store/modules/edit/rating'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 type RatingInitialData = {
   galgameRatingId: number
@@ -205,13 +204,11 @@ const submit = async () => {
     }
 
     isSubmitting.value = true
-    const res = await $fetch(
-      `/api/galgame-rating/${props.initialData!.galgameRatingId}`,
+    const res = await kunFetch(
+      `/galgame-rating/${props.initialData!.galgameRatingId}`,
       {
         method: 'PUT',
-        body,
-        watch: false,
-        ...kungalgameResponseHandler
+        body
       }
     )
     isSubmitting.value = false
@@ -242,11 +239,9 @@ const submit = async () => {
     if (!valid) return
 
     isSubmitting.value = true
-    const res = await $fetch('/api/galgame-rating', {
+    const res = await kunFetch('/galgame-rating', {
       method: 'POST',
-      body,
-      watch: false,
-      ...kungalgameResponseHandler
+      body
     })
     isSubmitting.value = false
     if (res) {

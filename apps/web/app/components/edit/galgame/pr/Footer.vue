@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { updateGalgameSchema } from '~/validations/galgame'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const { galgamePR } = storeToRefs(useTempGalgamePRStore())
 
@@ -46,11 +45,9 @@ const handlePublishGalgamePR = async () => {
     isPublishing.value = true
   }
 
-  const response = await $fetch(`/api/galgame/${galgame.id}/pr`, {
+  const response = await kunFetch(`/galgame/${galgame.id}/pr`, {
     method: 'POST',
-    body: data,
-    watch: false,
-    ...kungalgameResponseHandler
+    body: data
   })
   isPublishing.value = false
 

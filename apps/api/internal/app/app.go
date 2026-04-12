@@ -6,6 +6,8 @@ import (
 	adminHandler "kun-galgame-api/internal/admin/handler"
 	"kun-galgame-api/internal/common"
 	docHandler "kun-galgame-api/internal/doc/handler"
+	galgameClient "kun-galgame-api/internal/galgame/client"
+	galgameHandler "kun-galgame-api/internal/galgame/handler"
 	"kun-galgame-api/internal/infrastructure/cache"
 	"kun-galgame-api/internal/infrastructure/database"
 	"kun-galgame-api/internal/infrastructure/mail"
@@ -51,8 +53,9 @@ type App struct {
 	SectionHandler *common.SectionHandler
 	DocHandler     *docHandler.DocHandler
 	WebsiteHandler *websiteHandler.WebsiteHandler
-	UpdateHandler  *common.UpdateHandler
-	MiscHandler    *common.MiscHandler
+	UpdateHandler   *common.UpdateHandler
+	MiscHandler     *common.MiscHandler
+	GalgameHandler  *galgameHandler.GalgameHandler
 }
 
 func New(cfg *config.Config) *App {
@@ -95,8 +98,9 @@ func New(cfg *config.Config) *App {
 		SectionHandler: common.NewSectionHandler(db),
 		DocHandler:     docHandler.NewDocHandler(db),
 		WebsiteHandler: websiteHandler.NewWebsiteHandler(db),
-		UpdateHandler:  common.NewUpdateHandler(db),
-		MiscHandler:    common.NewMiscHandler(db),
+		UpdateHandler:   common.NewUpdateHandler(db),
+		MiscHandler:     common.NewMiscHandler(db),
+		GalgameHandler:  galgameHandler.NewGalgameHandler(db, galgameClient.NewGalgameClient(cfg.GalgameWiki.BaseURL)),
 	}
 
 	// Fiber

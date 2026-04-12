@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { UpdateGalgameSeriesPayload } from '../types'
 
 const pageData = reactive({
@@ -7,20 +6,17 @@ const pageData = reactive({
   limit: 12
 })
 
-const { data, status } = await useFetch('/api/galgame-series', {
+const { data, status } = await useKunFetch('/galgame-series', {
   method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
+  query: pageData
 })
 
 const showSeriesModal = ref(false)
 
 const handleCreateSeries = async (data: UpdateGalgameSeriesPayload) => {
-  const result = await $fetch(`/api/galgame-series`, {
+  const result = await kunFetch(`/galgame-series`, {
     method: 'POST',
-    watch: false,
-    body: data,
-    ...kungalgameResponseHandler
+    body: data
   })
 
   if (result) {

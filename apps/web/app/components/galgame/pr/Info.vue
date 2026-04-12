@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { KUN_GALGAME_RESOURCE_PULL_REQUEST_STATUS_MAP } from '~/constants/galgame'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   galgameId: number
   pr: GalgamePR
@@ -28,11 +26,9 @@ const handleGetDetails = async (galgamePrId: number) => {
     return
   }
   isFetching.value = true
-  const result = await $fetch(`/api/galgame/${props.galgameId}/pr`, {
+  const result = await kunFetch(`/galgame/${props.galgameId}/pr`, {
     method: 'GET',
-    query: { galgamePrId },
-    watch: false,
-    ...kungalgameResponseHandler
+    query: { galgamePrId }
   })
   isFetching.value = false
 

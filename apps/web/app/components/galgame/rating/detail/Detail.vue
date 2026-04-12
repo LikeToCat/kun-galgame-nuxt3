@@ -10,7 +10,6 @@ import {
   KUN_GALGAME_DIM_DESCRIPTIONS
 } from '~/constants/galgame-rating'
 import { calcGalgameRating } from '~~/algorithms/GalgameRatingAlg'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const props = defineProps<{
   ratingId: number
@@ -47,11 +46,9 @@ const handleDeleteRating = async () => {
     return
   }
 
-  const res = await $fetch(`/api/galgame-rating/${props.data.id}`, {
+  const res = await kunFetch(`/galgame-rating/${props.data.id}`, {
     method: 'DELETE',
-    query: { galgameRatingId: props.data.id },
-    watch: false,
-    ...kungalgameResponseHandler
+    query: { galgameRatingId: props.data.id }
   })
   if (res) {
     useMessage('删除成功', 'success')

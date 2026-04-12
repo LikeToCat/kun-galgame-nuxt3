@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { UpdateGalgameSeriesPayload } from '../types'
 
 const props = defineProps<{
@@ -27,11 +26,9 @@ const openEditSeriesModal = () => {
 }
 
 const handleUpdateSeries = async (data: UpdateGalgameSeriesPayload) => {
-  const result = await $fetch(`/api/galgame-series/${props.data.id}`, {
+  const result = await kunFetch(`/galgame-series/${props.data.id}`, {
     method: 'PUT',
-    watch: false,
-    body: data,
-    ...kungalgameResponseHandler
+    body: data
   })
 
   if (result) {
@@ -48,11 +45,9 @@ const handleDeleteSeries = async () => {
     return
   }
 
-  const result = await $fetch(`/api/galgame-series/${props.data.id}`, {
+  const result = await kunFetch(`/galgame-series/${props.data.id}`, {
     method: 'DELETE',
-    watch: false,
-    query: { seriesId: props.data.id },
-    ...kungalgameResponseHandler
+    query: { seriesId: props.data.id }
   })
 
   if (result) {

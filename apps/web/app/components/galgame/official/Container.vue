@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { watchDebounced } from '@vueuse/core'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const pageData = reactive({
   page: 1,
   limit: 100
 })
 
-const { data, status } = await useFetch(`/api/galgame-official`, {
+const { data, status } = await useKunFetch(`/galgame-official`, {
   method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
+  query: pageData
 })
 
 const searchResult = ref<GalgameOfficialItem[]>([])
@@ -26,7 +24,7 @@ const handleSearch = async () => {
     return
   }
   isSearching.value = true
-  const res = await $fetch(`/api/galgame-official/search`, {
+  const res = await kunFetch(`/galgame-official/search`, {
     method: 'GET',
     query: { q: searchQuery.value.split(' ') }
   })

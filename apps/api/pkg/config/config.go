@@ -7,14 +7,19 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	OAuth    OAuthConfig
-	S3       S3Config
-	Mail     MailConfig
-	Search   SearchConfig
-	CORS     CORSConfig
+	Server      ServerConfig
+	Database    DatabaseConfig
+	Redis       RedisConfig
+	OAuth       OAuthConfig
+	S3          S3Config
+	Mail        MailConfig
+	Search      SearchConfig
+	CORS        CORSConfig
+	GalgameWiki GalgameWikiConfig
+}
+
+type GalgameWikiConfig struct {
+	BaseURL string
 }
 
 type ServerConfig struct {
@@ -138,6 +143,9 @@ func Load() (*Config, error) {
 				"CORS_ALLOW_ORIGINS",
 				"http://127.0.0.1:2333,https://www.kungal.com",
 			),
+		},
+		GalgameWiki: GalgameWikiConfig{
+			BaseURL: envOrDefault("GALGAME_WIKI_BASE_URL", "http://127.0.0.1:9280/api"),
 		},
 	}, nil
 }

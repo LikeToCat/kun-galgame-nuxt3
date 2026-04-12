@@ -33,13 +33,11 @@ const handleDeclineRequest = async () => {
   }
 
   isFetching.value = true
-  const result = await $fetch(
-    `/api/galgame/${props.details.galgameId}/pr/decline`,
+  const result = await kunFetch(
+    `/galgame/${props.details.galgameId}/pr/decline`,
     {
       method: 'PUT',
-      body: { galgamePrId: props.details.id, note: declineInput.value.trim() },
-      watch: false,
-      ...kungalgameResponseHandler
+      body: { galgamePrId: props.details.id, note: declineInput.value.trim() }
     }
   )
   isFetching.value = false
@@ -60,13 +58,11 @@ const handleMergeRequest = async () => {
   }
 
   isFetching.value = true
-  const result = await $fetch(
-    `/api/galgame/${props.details.galgameId}/pr/merge`,
+  const result = await kunFetch(
+    `/galgame/${props.details.galgameId}/pr/merge`,
     {
       method: 'PUT',
-      body: { galgamePrId: props.details.id },
-      watch: false,
-      ...kungalgameResponseHandler
+      body: { galgamePrId: props.details.id }
     }
   )
   isFetching.value = false

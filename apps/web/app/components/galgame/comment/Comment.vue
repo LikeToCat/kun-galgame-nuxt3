@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { SerializeObject } from 'nitropack'
 
 const props = defineProps<{
@@ -31,11 +30,9 @@ const handleDeleteComment = async (
     return
   }
 
-  const result = await $fetch(`/api/galgame/${galgameId}/comment`, {
+  const result = await kunFetch(`/galgame/${galgameId}/comment`, {
     method: 'DELETE',
-    query: { galgameCommentId },
-    watch: false,
-    ...kungalgameResponseHandler
+    query: { galgameCommentId }
   })
 
   if (result) {

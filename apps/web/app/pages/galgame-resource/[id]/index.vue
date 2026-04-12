@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import {
   KUN_GALGAME_RESOURCE_LANGUAGE_MAP,
   KUN_GALGAME_RESOURCE_PLATFORM_MAP,
@@ -9,11 +8,10 @@ import {
 const route = useRoute()
 const resourceId = computed(() => Number((route.params as { id: string }).id))
 
-const { data, refresh } = await useFetch(
-  `/api/galgame-resource/${resourceId.value}`,
+const { data, refresh } = await useKunFetch(
+  `/galgame-resource/${resourceId.value}`,
   {
-    query: { resourceId },
-    ...kungalgameResponseHandler
+    query: { resourceId }
   }
 )
 

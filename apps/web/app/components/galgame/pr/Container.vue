@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const route = useRoute()
 const gid = computed(() => {
   return parseInt((route.params as { gid: string }).gid)
@@ -12,13 +10,12 @@ const pageData = reactive({
   galgameId: gid.value
 })
 
-const { data, status, refresh } = await useFetch(
-  `/api/galgame/${gid.value}/pr/all`,
+const { data, status, refresh } = await useKunFetch(
+  `/galgame/${gid.value}/pr/all`,
   {
     lazy: true,
     method: 'GET',
-    query: pageData,
-    ...kungalgameResponseHandler
+    query: pageData
   }
 )
 </script>

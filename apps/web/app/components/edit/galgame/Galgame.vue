@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { languageItems } from '~/constants/edit'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { VNDB, VNDBResponse } from '../utils/VNDB'
 
 const introductionLanguage = ref<Language>('zh-cn')
@@ -24,10 +23,9 @@ const handleGetVNData = async () => {
     return
   }
 
-  const isDuplicate = await $fetch('/api/galgame/check', {
+  const isDuplicate = await kunFetch('/galgame/check', {
     method: 'GET',
-    query: { vndbId: vndbId.value },
-    ...kungalgameResponseHandler
+    query: { vndbId: vndbId.value }
   })
   if (!isDuplicate) {
     return

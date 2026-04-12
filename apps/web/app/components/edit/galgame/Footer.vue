@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { createGalgameSchema } from '~/validations/galgame'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const { vndbId, name, contentLimit, introduction, aliases } = storeToRefs(
   usePersistEditGalgameStore()
@@ -59,10 +58,9 @@ const handlePublishGalgame = async () => {
       }
     }
   }
-  const gid = await $fetch('/api/galgame', {
+  const gid = await kunFetch('/galgame', {
     method: 'POST',
-    body: formData,
-    ...kungalgameResponseHandler
+    body: formData
   })
   isPublishing.value = false
 

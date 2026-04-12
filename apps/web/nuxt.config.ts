@@ -70,7 +70,11 @@ export default defineNuxtConfig({
         process.env.OAUTH_SERVER_URL || 'http://127.0.0.1:9277/api/v1',
       oauthClientId: process.env.OAUTH_CLIENT_ID || '',
       oauthRedirectUri:
-        process.env.OAUTH_REDIRECT_URI || 'http://127.0.0.1:2333/auth/callback'
+        process.env.OAUTH_REDIRECT_URI || 'http://127.0.0.1:2333/auth/callback',
+
+      // Galgame Wiki Service
+      galgameWikiUrl:
+        process.env.GALGAME_WIKI_URL || 'http://127.0.0.1:9280/api'
     }
   },
 
@@ -118,6 +122,9 @@ export default defineNuxtConfig({
 
   vite: {
     plugins: [tailwindcss()]
+    // optimizeDeps: {
+    //   include: ['isomorphic-dompurify', 'date-fns/locale']
+    // }
   },
 
   // $production: {

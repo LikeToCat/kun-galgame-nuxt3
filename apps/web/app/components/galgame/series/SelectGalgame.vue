@@ -30,7 +30,7 @@ const handleSearch = useDebounceFn(async () => {
   }
   isLoading.value = true
 
-  const data = await $fetch('/api/galgame-series/search', {
+  const data = await kunFetch('/galgame-series/search', {
     method: 'GET',
     query: { keywords: searchTerm.value }
   })
@@ -69,7 +69,7 @@ const syncSelectedGalgames = async (ids: number[]) => {
 
   isLoading.value = true
 
-  const data = await $fetch('/api/galgame-series/modal', {
+  const data = await kunFetch('/galgame-series/modal', {
     method: 'POST',
     body: { ids }
   })

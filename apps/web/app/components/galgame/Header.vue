@@ -10,7 +10,6 @@ import {
   KUN_GALGAME_CONTENT_LIMIT_MAP
 } from '~/constants/galgame'
 import { updateGalgameBannerSchema } from '~/validations/galgame'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const props = defineProps<{
   galgame: GalgameDetail
@@ -74,11 +73,9 @@ const handleChangeBanner = async () => {
   formData.append('galgameId', gid.value.toString())
 
   isPublishing.value = true
-  const response = await $fetch(`/api/galgame/${gid.value}/banner`, {
+  const response = await kunFetch(`/galgame/${gid.value}/banner`, {
     method: 'PUT',
-    body: formData,
-    watch: false,
-    ...kungalgameResponseHandler
+    body: formData
   })
   isPublishing.value = false
 

@@ -1,16 +1,13 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const route = useRoute()
 
 const seriesId = computed(() => {
   return Number((route.params as { id: string }).id)
 })
 
-const { data } = await useFetch(`/api/galgame-series/${seriesId.value}`, {
+const { data } = await useKunFetch(`/galgame-series/${seriesId.value}`, {
   method: 'GET',
-  query: { seriesId: seriesId.value },
-  ...kungalgameResponseHandler
+  query: { seriesId: seriesId.value }
 })
 
 if (data.value) {

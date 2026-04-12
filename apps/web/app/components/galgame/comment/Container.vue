@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 const props = defineProps<{
   userData: KunUser[]
   targetUser: KunUser
@@ -18,12 +17,12 @@ const pageData = reactive({
   sortOrder: 'desc'
 })
 
-const { data, status, refresh } = await useLazyFetch(
-  `/api/galgame/${gid}/comment/all`,
+const { data, status, refresh } = await useKunFetch(
+  `/galgame/${gid}/comment/all`,
   {
+    lazy: true,
     method: 'GET',
-    query: pageData,
-    ...kungalgameResponseHandler
+    query: pageData
   }
 )
 

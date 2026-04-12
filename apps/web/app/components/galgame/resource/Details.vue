@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const { id, role } = usePersistUserStore()
 const { resource, rewriteResourceId } = storeToRefs(
   useTempGalgameResourceStore()
@@ -23,11 +21,9 @@ const handleDeleteResource = async (
     return
   }
 
-  const result = await $fetch(`/api/galgame/${galgameId}/resource`, {
+  const result = await kunFetch(`/galgame/${galgameId}/resource`, {
     method: 'DELETE',
-    query: { galgameResourceId },
-    watch: false,
-    ...kungalgameResponseHandler
+    query: { galgameResourceId }
   })
 
   if (result) {
@@ -50,13 +46,11 @@ const handleReportExpire = async (details: GalgameResourceDetailLink) => {
   }
 
   isFetching.value = true
-  const result = await $fetch(
-    `/api/galgame/${details.galgameId}/resource/expired`,
+  const result = await kunFetch(
+    `/galgame/${details.galgameId}/resource/expired`,
     {
       method: 'PUT',
-      body: { galgameResourceId: details.id },
-      watch: false,
-      ...kungalgameResponseHandler
+      body: { galgameResourceId: details.id }
     }
   )
   isFetching.value = false

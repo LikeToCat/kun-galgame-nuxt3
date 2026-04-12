@@ -9,8 +9,6 @@ import {
   KUN_GALGAME_RESOURCE_PLATFORM_MAP
 } from '~/constants/galgame'
 import { useGalgameResourceProvider } from '~/composables/galgame/useGalgameResourceProvider'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   resource: GalgameResource
   refresh: () => void
@@ -32,11 +30,9 @@ const handleMarkValid = async (
     return
   }
 
-  const result = await $fetch(`/api/galgame/${galgameId}/resource/valid`, {
+  const result = await kunFetch(`/galgame/${galgameId}/resource/valid`, {
     method: 'PUT',
-    body: { galgameResourceId },
-    watch: false,
-    ...kungalgameResponseHandler
+    body: { galgameResourceId }
   })
 
   if (result) {

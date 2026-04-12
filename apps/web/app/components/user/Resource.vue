@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import {
   GALGAME_RESOURCE_PROVIDER_MAP,
   GALGAME_RESOURCE_TYPE_ICON_MAP,
@@ -74,17 +73,13 @@ const submitFix = async (index: number) => {
   }
 
   await Promise.all([
-    $fetch(`/api/galgame/${res.galgameId}/resource`, {
+    kunFetch(`/galgame/${res.galgameId}/resource`, {
       method: 'PUT',
-      body: payload,
-      watch: false,
-      ...kungalgameResponseHandler
+      body: payload
     }),
-    $fetch(`/api/galgame/${res.galgameId}/resource/valid`, {
+    kunFetch(`/galgame/${res.galgameId}/resource/valid`, {
       method: 'PUT',
-      watch: false,
-      body: { galgameResourceId: res.id },
-      ...kungalgameResponseHandler
+      body: { galgameResourceId: res.id }
     })
   ])
 

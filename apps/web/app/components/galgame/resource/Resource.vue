@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const route = useRoute()
 const gid = computed(() => {
   return parseInt((route.params as { gid: string }).gid)
@@ -9,12 +7,12 @@ const gid = computed(() => {
 const { isShowPublish } = storeToRefs(useTempGalgameResourceStore())
 const { id } = usePersistUserStore()
 
-const { data, status, refresh } = await useLazyFetch(
-  `/api/galgame/${gid.value}/resource/all`,
+const { data, status, refresh } = await useKunFetch(
+  `/galgame/${gid.value}/resource/all`,
   {
+    lazy: true,
     method: 'GET',
-    query: { galgameId: gid.value },
-    ...kungalgameResponseHandler
+    query: { galgameId: gid.value }
   }
 )
 </script>

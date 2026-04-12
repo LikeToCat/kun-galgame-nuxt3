@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { UpdateGalgameOfficialPayload } from '~/components/galgame/types'
 import {
   KUN_GALGAME_OFFICIAL_CATEGORY_MAP,
@@ -20,8 +19,8 @@ const editingOfficial = ref<UpdateGalgameOfficialPayload>(
   {} as UpdateGalgameOfficialPayload
 )
 
-const { data, status } = await useFetch(
-  `/api/galgame-official/${officialId.value}`,
+const { data, status } = await useKunFetch(
+  `/galgame-official/${officialId.value}`,
   {
     method: 'GET',
     query: {
@@ -33,8 +32,7 @@ const { data, status } = await useFetch(
       sortField,
       sortOrder,
       officialId
-    },
-    ...kungalgameResponseHandler
+    }
   }
 )
 
@@ -56,11 +54,9 @@ const openEditOfficialModal = () => {
 }
 
 const handleUpdateOfficial = async (data: UpdateGalgameOfficialPayload) => {
-  const result = await $fetch(`/api/galgame-official`, {
+  const result = await kunFetch(`/galgame-official`, {
     method: 'PUT',
-    watch: false,
-    body: data,
-    ...kungalgameResponseHandler
+    body: data
   })
 
   if (result) {

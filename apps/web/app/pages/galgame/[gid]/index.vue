@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type {
   VideoGame,
   WithContext,
@@ -14,11 +13,10 @@ const gid = computed(() => {
   return parseInt((route.params as { gid: string }).gid)
 })
 
-const { data } = await useFetch(`/api/galgame/${gid.value}`, {
+const { data } = await useKunFetch(`/galgame/${gid.value}`, {
   method: 'GET',
   watch: false,
-  query: { galgameId: gid.value },
-  ...kungalgameResponseHandler
+  query: { galgameId: gid.value }
 })
 
 const galgame = data.value

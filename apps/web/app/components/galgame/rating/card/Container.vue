@@ -5,8 +5,6 @@ import {
   typeOptions,
   sortFieldOptions
 } from './_sort'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const params = reactive({
   page: 1,
   limit: 24,
@@ -17,10 +15,9 @@ const params = reactive({
   galgameType: 'all'
 })
 
-const { data, status } = await useFetch(`/api/galgame-rating/all`, {
+const { data, status } = await useKunFetch(`/galgame-rating/all`, {
   method: 'GET',
-  query: params,
-  ...kungalgameResponseHandler
+  query: params
 })
 </script>
 

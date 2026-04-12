@@ -8,7 +8,6 @@ import {
   KUN_GALGAME_RESOURCE_PLATFORM_MAP
 } from '~/constants/galgame'
 import { checkGalgameResourcePublish } from '../utils/checkGalgameResourcePublish'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type {
   KunGalgameResourceTypeOptions,
   KunGalgameResourceLanguageOptions,
@@ -51,15 +50,13 @@ const handlePublishResourceLink = async (method: 'POST' | 'PUT') => {
   }
 
   isFetching.value = true
-  const result = await $fetch(`/api/galgame/${props.galgameId}/resource`, {
+  const result = await kunFetch(`/galgame/${props.galgameId}/resource`, {
     method,
     body: {
       ...resourceLink.value,
       galgameId: props.galgameId,
       galgameResourceId: rewriteResourceId.value
-    },
-    watch: false,
-    ...kungalgameResponseHandler
+    }
   })
   isFetching.value = false
 

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   ratingId: number
   ratingAuthorId: number
@@ -37,14 +35,12 @@ const submitEdit = async () => {
     useMessage('请输入评论内容', 'warn')
     return
   }
-  const res = await $fetch(`/api/galgame-rating/${props.ratingId}/comment`, {
+  const res = await kunFetch(`/galgame-rating/${props.ratingId}/comment`, {
     method: 'PUT',
     body: {
       galgameRatingCommentId: props.comment.id,
       content: text
-    },
-    watch: false,
-    ...kungalgameResponseHandler
+    }
   })
   if (res) {
     useMessage('更新成功', 'success')
@@ -59,11 +55,9 @@ const deleteComment = async () => {
     '该操作不可恢复'
   )
   if (!ok) return
-  const res = await $fetch(`/api/galgame-rating/${props.ratingId}/comment`, {
+  const res = await kunFetch(`/galgame-rating/${props.ratingId}/comment`, {
     method: 'DELETE',
-    query: { galgameRatingCommentId: props.comment.id },
-    watch: false,
-    ...kungalgameResponseHandler
+    query: { galgameRatingCommentId: props.comment.id }
   })
   if (res) {
     useMessage('删除成功', 'success')

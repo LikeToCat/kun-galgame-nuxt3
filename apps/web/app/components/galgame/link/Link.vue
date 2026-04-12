@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { checkGalgameLinkPublish } from '../utils/checkGalgameLinkPublish'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const { id } = usePersistUserStore()
 const route = useRoute()
@@ -16,13 +15,13 @@ const linkModel = reactive({
   galgameId: gid.value
 })
 
-const { data, status, refresh } = await useLazyFetch(
-  `/api/galgame/${gid.value}/link/all`,
+const { data, status, refresh } = await useKunFetch(
+  `/galgame/${gid.value}/link/all`,
   {
+    lazy: true,
     method: 'GET',
     query: { galgameId: gid.value },
-    watch: false,
-    ...kungalgameResponseHandler
+    watch: false
   }
 )
 
@@ -32,11 +31,9 @@ const handlePublishLink = async () => {
   }
 
   isFetching.value = true
-  const result = await $fetch(`/api/galgame/${gid.value}/link`, {
+  const result = await kunFetch(`/galgame/${gid.value}/link`, {
     method: 'POST',
-    body: linkModel,
-    watch: false,
-    ...kungalgameResponseHandler
+    body: linkModel
   })
   isFetching.value = false
 
@@ -55,11 +52,9 @@ const handleDeleteLink = async (gid: number, glid: number) => {
     return
   }
 
-  const result = await $fetch(`/api/galgame/${gid}/link`, {
+  const result = await kunFetch(`/galgame/${gid}/link`, {
     method: 'DELETE',
-    query: { galgameLinkId: glid },
-    watch: false,
-    ...kungalgameResponseHandler
+    query: { galgameLinkId: glid }
   })
 
   if (result) {

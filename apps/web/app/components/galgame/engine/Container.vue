@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
-const { data } = await useFetch(`/api/galgame-engine`, {
-  method: 'GET',
-  ...kungalgameResponseHandler
+const { data } = await useKunFetch(`/galgame-engine`, {
+  method: 'GET'
 })
 </script>
 

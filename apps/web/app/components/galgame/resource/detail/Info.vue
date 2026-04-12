@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useGalgameResourceProvider } from '~/composables/galgame/useGalgameResourceProvider'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const { id, role } = usePersistUserStore()
 const {
@@ -29,13 +28,11 @@ const handleDeleteResource = async () => {
     return
   }
 
-  const result = await $fetch(
-    `/api/galgame/${props.resource.galgameId}/resource`,
+  const result = await kunFetch(
+    `/galgame/${props.resource.galgameId}/resource`,
     {
       method: 'DELETE',
-      query: { galgameResourceId: props.resource.id },
-      watch: false,
-      ...kungalgameResponseHandler
+      query: { galgameResourceId: props.resource.id }
     }
   )
 
@@ -60,13 +57,11 @@ const handleReportExpire = async () => {
   }
 
   isFetching.value = true
-  const result = await $fetch(
-    `/api/galgame/${props.resource.galgameId}/resource/expired`,
+  const result = await kunFetch(
+    `/galgame/${props.resource.galgameId}/resource/expired`,
     {
       method: 'PUT',
-      body: { galgameResourceId: props.resource.id },
-      watch: false,
-      ...kungalgameResponseHandler
+      body: { galgameResourceId: props.resource.id }
     }
   )
   isFetching.value = false
@@ -81,13 +76,11 @@ const handleGetResourceLink = async () => {
   if (detail.value) return
 
   isFetching.value = true
-  const result = await $fetch(
-    `/api/galgame-resource/${props.resource.id}/detail`,
+  const result = await kunFetch(
+    `/galgame-resource/${props.resource.id}/detail`,
     {
       method: 'GET',
-      query: { galgameResourceId: props.resource.id },
-      watch: false,
-      ...kungalgameResponseHandler
+      query: { galgameResourceId: props.resource.id }
     }
   )
   isFetching.value = false

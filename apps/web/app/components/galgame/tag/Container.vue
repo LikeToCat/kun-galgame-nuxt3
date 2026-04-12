@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { watchDebounced } from '@vueuse/core'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const pageData = reactive({
   page: 1,
   limit: 100
 })
 
-const { data, status } = await useFetch(`/api/galgame-tag`, {
+const { data, status } = await useKunFetch(`/galgame-tag`, {
   method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
+  query: pageData
 })
 
 const searchResult = ref<GalgameTagItem[]>([])
@@ -46,7 +44,7 @@ const handleSearch = async () => {
     return
   }
   isSearching.value = true
-  const res = await $fetch(`/api/galgame-tag/search`, {
+  const res = await kunFetch(`/galgame-tag/search`, {
     method: 'GET',
     query: { q: searchQuery.value }
   })
@@ -83,14 +81,13 @@ const fetchGames = async () => {
     return
   }
   loadingGames.value = true
-  const res = await $fetch(`/api/galgame-tag/multi`, {
+  const res = await kunFetch(`/galgame-tag/multi`, {
     method: 'GET',
     query: {
       page: gamesPage.value,
       limit: gamesLimit,
       tagIds: selectedTags.value.map((t) => t.id).join(',')
-    },
-    ...kungalgameResponseHandler
+    }
   })
   loadingGames.value = false
   if (res) {

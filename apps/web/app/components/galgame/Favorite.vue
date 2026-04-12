@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   galgameId: number
   targetUserId: number
@@ -13,11 +11,9 @@ const isFavorited = ref(id && props.isFavorited)
 const favoriteCount = ref(props.favoriteCount)
 
 const toggleFavoriteGalgame = async () => {
-  const result = await $fetch(`/api/galgame/${props.galgameId}/favorite`, {
+  const result = await kunFetch(`/galgame/${props.galgameId}/favorite`, {
     method: 'PUT',
-    watch: false,
-    body: { galgameId: props.galgameId },
-    ...kungalgameResponseHandler
+    body: { galgameId: props.galgameId }
   })
 
   if (result) {

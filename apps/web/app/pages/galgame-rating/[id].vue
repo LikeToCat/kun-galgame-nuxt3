@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type {
   Review,
   WithContext,
@@ -14,11 +13,10 @@ import type {
 const route = useRoute()
 const id = computed(() => parseInt((route.params as { id: string }).id))
 
-const { data, refresh } = await useFetch(`/api/galgame-rating/${id.value}`, {
+const { data, refresh } = await useKunFetch(`/galgame-rating/${id.value}`, {
   method: 'GET',
   watch: false,
-  query: { galgameRatingId: id.value },
-  ...kungalgameResponseHandler
+  query: { galgameRatingId: id.value }
 })
 
 const jsonLd = computed<WithContext<Review> | null>(() => {

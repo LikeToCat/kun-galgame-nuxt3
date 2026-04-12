@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { SerializeObject } from 'nitropack'
 
 const props = defineProps<{
@@ -21,13 +20,11 @@ const likeComment = async () => {
     return
   }
 
-  const result = await $fetch(
-    `/api/galgame/${props.comment.galgameId}/comment/like`,
+  const result = await kunFetch(
+    `/galgame/${props.comment.galgameId}/comment/like`,
     {
       method: 'PUT',
-      body: { galgameCommentId: props.comment.id },
-      watch: false,
-      ...kungalgameResponseHandler
+      body: { galgameCommentId: props.comment.id }
     }
   )
 

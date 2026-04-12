@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   refresh: () => void
 }>()
@@ -29,15 +27,13 @@ const handlePublishComment = async () => {
   }
 
   isPublishing.value = true
-  const result = await $fetch(`/api/galgame/${galgameId.value}/comment`, {
+  const result = await kunFetch(`/galgame/${galgameId.value}/comment`, {
     method: 'POST',
     body: {
       galgameId: galgameId.value,
       targetUserId: commentToUid.value,
       content: content.value
-    },
-    watch: false,
-    ...kungalgameResponseHandler
+    }
   })
   isPublishing.value = false
 

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { UpdateGalgameTagPayload } from '~/components/galgame/types'
 import {
   KUN_GALGAME_TAG_CATEGORY_MAP,
@@ -18,7 +17,7 @@ const { page, limit, type, language, platform, sortField, sortOrder } =
 const showTagModal = ref(false)
 const editingTag = ref<UpdateGalgameTagPayload>({} as UpdateGalgameTagPayload)
 
-const { data, status } = await useFetch(`/api/galgame-tag/${tagId.value}`, {
+const { data, status } = await useKunFetch(`/galgame-tag/${tagId.value}`, {
   method: 'GET',
   query: {
     page,
@@ -29,8 +28,7 @@ const { data, status } = await useFetch(`/api/galgame-tag/${tagId.value}`, {
     sortField,
     sortOrder,
     tagId
-  },
-  ...kungalgameResponseHandler
+  }
 })
 
 const openEditTagModal = () => {
@@ -49,11 +47,9 @@ const openEditTagModal = () => {
 }
 
 const handleUpdateTag = async (data: UpdateGalgameTagPayload) => {
-  const result = await $fetch(`/api/galgame-tag`, {
+  const result = await kunFetch(`/galgame-tag`, {
     method: 'PUT',
-    watch: false,
-    body: data,
-    ...kungalgameResponseHandler
+    body: data
   })
 
   if (result) {

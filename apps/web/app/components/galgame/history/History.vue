@@ -3,8 +3,6 @@ import {
   KUN_GALGAME_RESOURCE_PULL_REQUEST_ACTION_MAP,
   KUN_GALGAME_RESOURCE_PULL_REQUEST_TYPE_MAP
 } from '~/constants/galgame'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const route = useRoute()
 const gid = computed(() => {
   return parseInt((route.params as { gid: string }).gid)
@@ -16,12 +14,12 @@ const pageData = reactive({
   galgameId: gid.value
 })
 
-const { data, status } = await useLazyFetch(
-  `/api/galgame/${gid.value}/history/all`,
+const { data, status } = await useKunFetch(
+  `/galgame/${gid.value}/history/all`,
   {
+    lazy: true,
     method: 'GET',
-    query: pageData,
-    ...kungalgameResponseHandler
+    query: pageData
   }
 )
 </script>
