@@ -50,7 +50,7 @@ func (a *App) setupRoutes() {
 	admin.Put("/user/:uid/ban", a.UserHandler.BanUser)
 	admin.Delete("/user/:uid", a.UserHandler.DeleteUser)
 
-	// ── Topic routes (public, optional auth for interaction status) ──
+	// ── Topic routes (public, optional auth) ──
 	optAuth := api.Group("", middleware.OptionalAuth(a.Redis, a.Config.OAuth))
 	optAuth.Get("/topic", a.TopicHandler.GetList)
 	optAuth.Get("/topic/:tid", a.TopicHandler.GetDetail)
@@ -86,4 +86,34 @@ func (a *App) setupRoutes() {
 	authed.Post("/topic/:tid/poll", a.PollHandler.CreatePoll)
 	authed.Delete("/topic/:tid/poll", a.PollHandler.DeletePoll)
 	authed.Post("/topic/:tid/poll/vote", a.PollHandler.Vote)
+
+	// ── Message routes (authenticated) ──
+	authed.Get("/message", a.MessageHandler.GetMessages)
+	authed.Delete("/message/:id", a.MessageHandler.DeleteMessage)
+	authed.Put("/message/system/read", a.MessageHandler.MarkAllRead)
+	authed.Put("/message/admin/read", a.MessageHandler.MarkAdminRead)
+	authed.Get("/message/nav/system", a.MessageHandler.GetNavSummary)
+
+	// ── Message routes (public) ──
+	api.Get("/message/admin", a.MessageHandler.GetSystemMessages)
+
+	// ── Admin routes (role >= 3) ──
+	admin.Get("/admin/overview/all", a.AdminHandler.GetOverview)
+	admin.Get("/admin/overview/stats", a.AdminHandler.GetStats)
+	admin.Put("/admin/setting/register", a.AdminHandler.ToggleRegisterSetting)
+	adminRead := authed.Group("", middleware.RequireRole(2))
+	adminRead.Get("/admin/user", a.AdminHandler.GetUserList)
+	adminRead.Get("/admin/user/search", a.AdminHandler.SearchUsers)
+
+	// ── Admin setting (public read) ──
+	api.Get("/admin/setting/register", a.AdminHandler.GetRegisterSetting)
+
+	// ── Ranking routes (public) ──
+	api.Get("/ranking/galgame", a.RankingHandler.GetGalgameRanking)
+	api.Get("/ranking/topic", a.RankingHandler.GetTopicRanking)
+	api.Get("/ranking/user", a.RankingHandler.GetUserRanking)
+
+	// ── Section & Category routes (public) ──
+	api.Get("/section", a.SectionHandler.GetSectionTopics)
+	api.Get("/category", a.SectionHandler.GetCategories)
 }
