@@ -2,9 +2,42 @@
 
 > 最后更新: 2026-04-12
 
+## 架构概览
+
+```
+用户浏览器
+    │
+    ├── kungal.com (Nuxt 4 前端)
+    │       │
+    │       ├── apps/api (Go Fiber 后端)
+    │       │     ├── 用户/认证 (Redis session)
+    │       │     ├── 话题/评论/消息/工具集/网站/文档/管理
+    │       │     └── galgame 交互 (like/comment/rating/resource)
+    │       │           └── 调用 galgame service 获取元数据
+    │       │
+    │       └── galgame service (OAuth repo, 独立端口)
+    │             ├── galgame 元数据 CRUD
+    │             ├── tag/official/engine/series CRUD
+    │             ├── PR 系统 + 编辑历史
+    │             └── VNDB/DLSite/Bangumi 数据聚合
+    │
+    └── moyu.moe → 只读调用 galgame service 获取元数据
+```
+
+### 数据库拓扑
+
+| 数据库 | 用途 | 读写方 |
+|--------|------|--------|
+| `kun_oauth_admin` | OAuth 用户、角色、站点数据 | OAuth 服务读写，galgame service 只读 |
+| `kun_galgame_wiki` | galgame 元数据 (15 张表) | galgame service 读写 |
+| kungal 主库 | 交互表 + topic + message + ... | kungal 后端读写 |
+| moyu 主库 | patch + moyu 特有数据 | moyu 后端读写 |
+
+三个库的 user_id 已通过迁移脚本全局同步。
+
 ## 迁移目标
 
-将 Nuxt 4 Nitro 后端 (`apps/nitro-server/`) 完全替换为 Go Fiber 后端 (`apps/api/`)，前端 (`apps/web/`) 保持 Nuxt 4。
+将 Nuxt 4 Nitro 后端 (`apps/nitro-server/`) 完全替换为 Go Fiber 后端 (`apps/api/`)，前端 (`apps/web/`) 保持 Nuxt 4。galgame 元数据 CRUD 独立为 galgame service（OAuth repo）。
 
 ## 总体数字
 
@@ -62,16 +95,29 @@
 
 ## 未完成
 
-### Phase 2: Galgame 核心 (~55 端点)
+### Phase 2: Galgame 元数据 → galgame service (OAuth repo)
+
+在 OAuth repo 实现，独立数据库 `kun_galgame_wiki`：
+
+- [ ] galgame service 基础框架 (cmd/galgame/main.go)
+- [ ] 双数据库连接 (wiki 读写 + oauth 只读)
+- [ ] JWT 认证中间件 (验证 OAuth Bearer Token)
 - [ ] galgame 基础 CRUD (5 端点)
-- [ ] galgame 互动 like/favorite (3 端点)
-- [ ] galgame-comment (4 端点)
-- [ ] galgame-resource (8 端点)
-- [ ] galgame-pr + history (6 端点)
-- [ ] galgame-link (3 端点)
-- [ ] galgame-rating (9 端点)
-- [ ] galgame-series (7 端点)
-- [ ] galgame 元数据 tag/engine/official (12 端点)
+- [ ] galgame 元数据 tag/engine/official/series (24 端点)
+- [ ] galgame PR + history + contributor (8 端点)
+- [ ] galgame link + alias (5 端点)
+- [ ] 数据迁移脚本 (kungal → kun_galgame_wiki)
+- [ ] VNDB/DLSite/Bangumi 全量数据聚合
+
+### Phase 2b: Galgame 交互 → kungal 后端 (apps/api)
+
+- [ ] GalgameClient (HTTP client 调用 galgame service)
+- [ ] galgame_stats 新表 + 回填
+- [ ] galgame 互动 like/favorite (3 端点, 本地操作)
+- [ ] galgame-comment (4 端点, 本地操作)
+- [ ] galgame-resource (8 端点, 本地操作)
+- [ ] galgame-rating (9 端点, 本地操作)
+- [ ] galgame 详情聚合层 (galgame service 元数据 + 本地交互数据)
 
 ### Phase 3: Topic 论坛 (~28 端点)
 - [ ] topic 基础 CRUD (5 端点)
