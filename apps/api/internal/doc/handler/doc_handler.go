@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"kun-galgame-api/internal/doc/model"
+	"kun-galgame-api/internal/infrastructure/markdown"
 	"kun-galgame-api/internal/middleware"
 	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
@@ -88,7 +89,25 @@ func (h *DocHandler) GetArticleBySlug(c *fiber.Ctx) error {
 	go h.db.Model(&model.DocArticle{}).Where("id = ?", article.ID).
 		Update("view", gorm.Expr("view + 1"))
 
-	return response.OK(c, article)
+	return response.OK(c, fiber.Map{
+		"id":               article.ID,
+		"title":            article.Title,
+		"slug":             article.Slug,
+		"path":             article.Path,
+		"description":      article.Description,
+		"banner":           article.Banner,
+		"status":           article.Status,
+		"is_pin":           article.IsPin,
+		"view":             article.View,
+		"published_time":   article.PublishedTime,
+		"edited_time":      article.EditedTime,
+		"content_markdown": article.ContentMarkdown,
+		"contentHtml":      markdown.Render(article.ContentMarkdown),
+		"category_id":      article.CategoryID,
+		"author_id":        article.AuthorID,
+		"created":          article.CreatedAt,
+		"updated":          article.UpdatedAt,
+	})
 }
 
 // CreateArticle creates a new doc article.

@@ -42,8 +42,8 @@ const openEditTodoModal = (log: UpdateTodo) => {
   editingTodo.value = {
     status: log.status,
     type: 'forum',
-    content_en_us: log.content['en-us'],
-    content_zh_cn: log.content['zh-cn'],
+    content_en_us: log.content_en_us,
+    content_zh_cn: log.content_zh_cn,
     todoId: log.id
   } satisfies UpdateTodoPayload
   showTodoModal.value = true
@@ -94,13 +94,13 @@ const handleTodoAction = async (data: UpdateTodoPayload) => {
       </div>
 
       <pre class="font-mono break-all whitespace-pre-line">
-        {{ todo.content['zh-cn'] }}
+        {{ todo.content_zh_cn }}
       </pre>
 
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2 text-sm">
-          <span v-if="todo.completedTime" class="text-default-500">
-            {{ formatDate(todo.completedTime, { isPrecise: true }) }}
+          <span v-if="todo.completed_time" class="text-default-500">
+            {{ formatDate(todo.completed_time, { isPrecise: true }) }}
           </span>
           <KunIcon
             :name="iconMap[todo.status]"

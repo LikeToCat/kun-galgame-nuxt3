@@ -14,9 +14,9 @@ useKunSeoMeta({
   description: data.value?.description,
   ogImage: data.value?.banner,
   ogType: 'article',
-  articleAuthor: [`${kungal.domain.main}/user/${data.value?.author.id}/info`],
-  articlePublishedTime: data.value?.publishedTime.toString(),
-  articleModifiedTime: data.value?.editedTime?.toString()
+  articleAuthor: [`${kungal.domain.main}/user/${data.value?.author_id}/info`],
+  articlePublishedTime: data.value?.published_time?.toString(),
+  articleModifiedTime: data.value?.edited_time?.toString()
 })
 </script>
 
@@ -38,11 +38,12 @@ useKunSeoMeta({
         />
 
         <DocDetailHeader :metadata="data" />
-        <KunContent :content="data.contentHtml" />
+        <!-- TODO: server-side markdown rendering — contentHtml may not exist -->
+        <KunContent :content="data.contentHtml ?? ''" />
         <DocDetailFooter />
       </article>
 
-      <div v-if="data.toc.length" class="hidden lg:block">
+      <div v-if="data.toc?.length" class="hidden lg:block">
         <div class="fixed -translate-x-67">
           <DocDetailTableOfContent :links="data.toc" />
         </div>

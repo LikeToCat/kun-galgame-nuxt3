@@ -26,8 +26,8 @@ const openEditUpdateLogModal = (log: UpdateLog) => {
   }
   editingUpdateLog.value = {
     version: log.version,
-    content_en_us: log.content['en-us'],
-    content_zh_cn: log.content['zh-cn'],
+    content_en_us: log.content_en_us,
+    content_zh_cn: log.content_zh_cn,
     type: log.type,
     updateLogId: log.id
   } satisfies UpdateUpdateLogPayload
@@ -90,7 +90,7 @@ const handleUpdateLogAction = async (data: UpdateUpdateLogPayload) => {
       <pre
         class="bg-default-100 rounded-md p-4 font-mono text-sm break-all whitespace-pre-line"
       >
-          {{ update.content['zh-cn'] }}
+          {{ update.content_zh_cn }}
         </pre
       >
     </KunCard>

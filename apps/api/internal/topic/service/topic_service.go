@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"kun-galgame-api/internal/infrastructure/markdown"
+
 	"kun-galgame-api/internal/constants"
 	msgModel "kun-galgame-api/internal/message/model"
 	"kun-galgame-api/internal/middleware"
@@ -174,11 +176,12 @@ func (s *TopicService) GetDetail(
 	}
 
 	detail := &dto.TopicDetail{
-		ID:       topic.ID,
-		Title:    topic.Title,
-		Content:  topic.Content,
-		View:     topic.View,
-		Status:   topic.Status,
+		ID:          topic.ID,
+		Title:       topic.Title,
+		Content:     topic.Content,
+		ContentHtml: markdown.Render(topic.Content),
+		View:        topic.View,
+		Status:      topic.Status,
 		IsNSFW:   topic.IsNSFW,
 		Category: topic.Category,
 		Sections: sections,

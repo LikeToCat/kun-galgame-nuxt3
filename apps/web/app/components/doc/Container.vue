@@ -43,20 +43,17 @@ const articles = computed(() => articleResponse.value?.articles || [])
         :href="post.path"
         content-class="space-y-3"
       >
+        <!-- TODO: category is now category_id (flat), need separate fetch for slug/title -->
         <div class="flex items-center gap-3 text-sm">
-          <KunBadge
-            :color="KUN_DOC_CATEGORY_COLOR_MAP[post.category.slug] || 'default'"
-          >
-            {{
-              KUN_DOC_CATEGORY_MAP[post.category.slug] || post.category.title
-            }}
+          <KunBadge color="default">
+            {{ `分类 #${post.category_id}` }}
           </KunBadge>
 
           <time
-            :datetime="post.publishedTime.toString()"
+            :datetime="post.published_time?.toString()"
             class="text-default-500"
           >
-            {{ formatDate(post.publishedTime, { isShowYear: true }) }}
+            {{ formatDate(post.published_time, { isShowYear: true }) }}
           </time>
         </div>
 

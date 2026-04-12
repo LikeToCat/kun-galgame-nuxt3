@@ -11,7 +11,7 @@ export interface DocCategoryItem {
   title: string
   description: string
   icon: string
-  sortOrder: number
+  sort_order: number
   created: Date | string
   updated: Date | string
 }
@@ -39,19 +39,7 @@ export interface DocTagListResponse {
   limit: number
 }
 
-export interface DocArticleCategorySummary {
-  id: number
-  slug: string
-  title: string
-}
-
-export interface DocArticleAuthorSummary {
-  id: number
-  name: string
-  avatar: string
-}
-
-export interface DocArticleSummary {
+export interface DocArticle {
   id: number
   title: string
   slug: string
@@ -59,25 +47,26 @@ export interface DocArticleSummary {
   description: string
   banner: string
   status: number
-  isPin: boolean
+  is_pin: boolean
   view: number
-  publishedTime: Date | string
-  editedTime: Date | string | null
+  published_time: Date | string
+  edited_time: Date | string | null
+  content_markdown: string
+  category_id: number
+  author_id: number
   created: Date | string
   updated: Date | string
-  category: DocArticleCategorySummary
-  author: DocArticleAuthorSummary
-  tags: DocTagItem[]
+  // TODO: server-side markdown rendering
+  contentHtml?: string
+  toc?: DocTocLink[]
 }
 
-export interface DocArticleDetail extends DocArticleSummary {
-  contentMarkdown: string
-  contentHtml: string
-  toc: DocTocLink[]
-}
+// Kept for backward compatibility with components that use the old shape
+export type DocArticleSummary = DocArticle
+export type DocArticleDetail = DocArticle
 
 export interface DocArticleListResponse {
-  articles: DocArticleSummary[]
+  articles: DocArticle[]
   totalCount: number
   page: number
   limit: number

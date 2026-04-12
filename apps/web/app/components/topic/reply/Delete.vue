@@ -15,7 +15,6 @@ const handleDeleteReply = async () => {
     (props.reply.comment.length +
       props.reply.likeCount +
       props.reply.targets.length +
-      props.reply.targetByCount +
       1)
 
   if (moemoepoint < moemoepointToDecrease && isCommonUser) {

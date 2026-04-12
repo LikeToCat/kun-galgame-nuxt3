@@ -34,7 +34,7 @@ defineProps<{
         :section="topic.section"
         :tags="topic.tag"
         :upvote-time="topic.upvoteTime"
-        :has-best-answer="!!topic.bestAnswer"
+        :has-best-answer="false"
         :is-poll-topic="topic.isPollTopic"
         :is-n-s-f-w-topic="topic.isNSFW"
         :is-nav-to-section="true"
@@ -56,10 +56,7 @@ defineProps<{
         </p>
       </div>
 
-      <TopicDetailBestAnswer
-        v-if="topic.bestAnswer"
-        :best-answer="topic.bestAnswer"
-      />
+      <!-- TODO: bestAnswer no longer embedded in TopicDetail from Go backend -->
 
       <TopicDetailUser
         class-name="lg:hidden"
@@ -71,7 +68,8 @@ defineProps<{
         :show-addition="false"
       />
 
-      <KunContent class="kun-master" :content="topic.contentHtml" />
+      <!-- TODO: server-side markdown rendering — contentHtml may not exist -->
+      <KunContent class="kun-master" :content="topic.contentHtml ?? ''" />
 
       <p class="text-default-500 ml-auto text-sm">
         本文版权遵循

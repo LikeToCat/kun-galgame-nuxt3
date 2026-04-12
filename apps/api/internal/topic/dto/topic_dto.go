@@ -56,7 +56,8 @@ type TopicCard struct {
 type TopicDetail struct {
 	ID               int                    `json:"id"`
 	Title            string                 `json:"title"`
-	Content          string                 `json:"content"`
+	Content          string                 `json:"contentMarkdown"`
+	ContentHtml      string                 `json:"contentHtml"`
 	View             int                    `json:"view"`
 	Status           int                    `json:"status"`
 	IsNSFW           bool                   `json:"isNSFW"`

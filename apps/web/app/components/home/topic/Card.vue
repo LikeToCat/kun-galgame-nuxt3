@@ -26,7 +26,7 @@ defineProps<{
     <div class="flex w-full flex-wrap items-center justify-between gap-2">
       <TopicTagGroup
         :section="topic.section"
-        :tags="topic.tag"
+        :tags="[]"
         :upvote-time="topic.upvoteTime"
         :has-best-answer="topic.hasBestAnswer"
         :is-poll-topic="topic.isPollTopic"

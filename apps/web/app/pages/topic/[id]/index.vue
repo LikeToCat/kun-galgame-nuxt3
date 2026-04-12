@@ -102,20 +102,9 @@ if (data.value && data.value !== 'banned') {
       }
     ]
 
+    // TODO: bestAnswer is no longer embedded in TopicDetail from Go backend.
+    // Best answers are replies with isBestAnswer: true, loaded separately.
     let acceptedAnswerSchema: Comment | undefined = undefined
-    if (topic.bestAnswer) {
-      acceptedAnswerSchema = {
-        '@type': 'Comment',
-        text: markdownToText(topic.bestAnswer.contentMarkdown),
-        dateCreated: new Date(topic.bestAnswer.created).toISOString(),
-        url: `${topicUrl}#${topic.bestAnswer.floor}`,
-        author: {
-          '@type': 'Person',
-          name: topic.bestAnswer.user.name,
-          url: `${kungal.domain.main}/user/${topic.bestAnswer.user.id}/info`
-        }
-      }
-    }
 
     return {
       '@context': 'https://schema.org',

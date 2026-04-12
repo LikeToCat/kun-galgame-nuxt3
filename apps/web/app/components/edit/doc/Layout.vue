@@ -79,10 +79,11 @@ const applyArticleToForm = (article: DocArticleDetail) => {
   form.description = article.description
   form.banner = article.banner || ''
   form.status = article.status
-  form.isPin = article.isPin
-  form.contentMarkdown = article.contentMarkdown
-  form.categoryId = article.category.id
-  form.tagIds = article.tags.map((tag) => tag.id)
+  form.isPin = article.is_pin
+  form.contentMarkdown = article.content_markdown
+  form.categoryId = article.category_id
+  // TODO: tags are not embedded in Go response — need separate fetch
+  form.tagIds = []
 }
 
 const resetForm = () => {

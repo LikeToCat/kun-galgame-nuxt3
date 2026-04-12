@@ -55,6 +55,7 @@ type TopicReplyResponse struct {
 	User            KunUserWithMoemoepoint `json:"user"`
 	Edited          *time.Time             `json:"edited"`
 	ContentMarkdown string                 `json:"contentMarkdown"`
+	ContentHtml     string                 `json:"contentHtml"`
 	LikeCount       int                    `json:"likeCount"`
 	IsLiked         bool                   `json:"isLiked"`
 	DislikeCount    int                    `json:"dislikeCount"`
@@ -72,6 +73,7 @@ type ReplyTargetResponse struct {
 	User                 KunUser `json:"user"`
 	ContentPreview       string  `json:"contentPreview"`
 	ReplyContentMarkdown string  `json:"replyContentMarkdown"`
+	ReplyContentHtml     string  `json:"replyContentHtml"`
 }
 
 // ──────────────────────────────────────────

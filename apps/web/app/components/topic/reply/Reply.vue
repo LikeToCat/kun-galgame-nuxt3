@@ -119,9 +119,10 @@ const handleNewComment = (comment: TopicComment) => {
         />
       </div>
 
+      <!-- TODO: server-side markdown rendering — contentHtml may not exist -->
       <KunContent
         v-if="reply.contentMarkdown && reply.contentMarkdown.trim()"
-        :content="reply.contentHtml"
+        :content="reply.contentHtml ?? ''"
       />
 
       <TopicReplyFooter

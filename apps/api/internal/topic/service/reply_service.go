@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"kun-galgame-api/internal/infrastructure/markdown"
+
 	"kun-galgame-api/internal/constants"
 	msgModel "kun-galgame-api/internal/message/model"
 	"kun-galgame-api/internal/middleware"
@@ -490,6 +492,7 @@ func (s *ReplyService) buildReplyResponses(
 					User:                 dto.KunUser{ID: t.TargetUserID, Name: t.TargetUserName, Avatar: t.TargetUserAvatar},
 					ContentPreview:       preview,
 					ReplyContentMarkdown: t.Content,
+					ReplyContentHtml:     markdown.Render(t.Content),
 				})
 			}
 		}
@@ -534,6 +537,7 @@ func (s *ReplyService) buildReplyResponses(
 			},
 			Edited:          r.Edited,
 			ContentMarkdown: r.Content,
+			ContentHtml:     markdown.Render(r.Content),
 			LikeCount:       r.LikeCount,
 			IsLiked:         likeMap[r.ID],
 			DislikeCount:    r.DislikeCount,

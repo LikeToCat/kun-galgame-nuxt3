@@ -18,8 +18,6 @@ const { data } = await useKunFetch<{
     </div>
 
     <div class="w-full shrink-0 space-y-3 lg:w-72">
-      <HomeAsideRecent v-if="data" :activities="data.activities" />
-
       <HomeAsideHelp />
     </div>
   </div>

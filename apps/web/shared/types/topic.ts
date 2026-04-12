@@ -1,19 +1,34 @@
-import type { HomeTopic } from './home'
-
-export type TopicCard = HomeTopic
+export interface TopicCard {
+  id: number
+  title: string
+  view: number
+  tag: string[]
+  section: string[]
+  user: KunUser
+  status: number
+  hasBestAnswer: boolean
+  isPollTopic: boolean
+  isNSFWTopic: boolean
+  likeCount: number
+  replyCount: number
+  commentCount: number
+  statusUpdateTime: Date | string
+  upvoteTime: Date | string | null
+}
 
 export interface TopicAside {
   title: string
   tid: number
 }
 
+// TODO: bestAnswer is no longer embedded in TopicDetail from Go backend.
+// Best answers are replies with isBestAnswer: true, loaded in reply list.
+// Kept for backward compatibility with BestAnswer.vue component.
 export interface TopicBestAnswer {
   id: number
   topicId: number
   floor: number
   user: KunUser & { moemoepoint: number }
-  contentHtml: string
-  contentMarkdown: string
   created: Date | string
   edited: Date | string | null
 }
@@ -21,6 +36,8 @@ export interface TopicBestAnswer {
 export interface TopicDetail {
   id: number
   title: string
+  contentMarkdown: string
+  contentHtml: string
   view: number
   status: number
   isNSFW: boolean
@@ -39,11 +56,8 @@ export interface TopicDetail {
   isUpvoted: boolean
 
   replyCount: number
-  bestAnswer: TopicBestAnswer | null
   isPollTopic: boolean
 
-  contentHtml: string
-  contentMarkdown: string
   statusUpdateTime: Date | string
   upvoteTime: Date | string | null
   edited: Date | string | null

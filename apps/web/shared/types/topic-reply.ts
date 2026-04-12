@@ -5,8 +5,8 @@ export interface TopicReplyTargetInfo {
   floor: number
   user: KunUser
   contentPreview: string
-  replyContentHtml: string
   replyContentMarkdown: string
+  replyContentHtml: string
 }
 
 export interface TopicReply {
@@ -14,14 +14,13 @@ export interface TopicReply {
   topicId: number
   floor: number
   user: KunUser & { moemoepoint: number }
-  contentHtml: string
   contentMarkdown: string
+  contentHtml: string
 
   likeCount: number
   isLiked: boolean
   dislikeCount: number
   isDisliked: boolean
-  targetByCount: number
 
   comment: TopicComment[]
   created: Date | string
