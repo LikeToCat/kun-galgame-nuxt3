@@ -14,6 +14,7 @@ type Config struct {
 	S3       S3Config
 	Mail     MailConfig
 	Search   SearchConfig
+	CORS     CORSConfig
 }
 
 type ServerConfig struct {
@@ -64,14 +65,39 @@ type SearchConfig struct {
 	MeilisearchKey string
 }
 
-func Load() *Config {
+type CORSConfig struct {
+	AllowOrigins string
+}
+
+func Load() (*Config, error) {
+	dbURL, err := requireEnv("KUN_DATABASE_URL")
+	if err != nil {
+		return nil, err
+	}
+	oauthServerURL, err := requireEnv("OAUTH_SERVER_URL")
+	if err != nil {
+		return nil, err
+	}
+	oauthClientID, err := requireEnv("OAUTH_CLIENT_ID")
+	if err != nil {
+		return nil, err
+	}
+	oauthClientSecret, err := requireEnv("OAUTH_CLIENT_SECRET")
+	if err != nil {
+		return nil, err
+	}
+	oauthRedirectURI, err := requireEnv("OAUTH_REDIRECT_URI")
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		Server: ServerConfig{
 			Port: envOrDefault("SERVER_PORT", "2334"),
 			Mode: envOrDefault("SERVER_MODE", "dev"),
 		},
 		Database: DatabaseConfig{
-			URL:             mustEnv("KUN_DATABASE_URL"),
+			URL:             dbURL,
 			MaxOpenConns:    envOrDefaultInt("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns:    envOrDefaultInt("DB_MAX_IDLE_CONNS", 10),
 			ConnMaxLifetime: envOrDefaultInt("DB_CONN_MAX_LIFETIME", 300),
@@ -83,10 +109,10 @@ func Load() *Config {
 			DB:       envOrDefaultInt("REDIS_DB", 0),
 		},
 		OAuth: OAuthConfig{
-			ServerURL:    mustEnv("OAUTH_SERVER_URL"),
-			ClientID:     mustEnv("OAUTH_CLIENT_ID"),
-			ClientSecret: mustEnv("OAUTH_CLIENT_SECRET"),
-			RedirectURI:  mustEnv("OAUTH_REDIRECT_URI"),
+			ServerURL:    oauthServerURL,
+			ClientID:     oauthClientID,
+			ClientSecret: oauthClientSecret,
+			RedirectURI:  oauthRedirectURI,
 			JWTSecret:    envOrDefault("JWT_SECRET", ""),
 		},
 		S3: S3Config{
@@ -107,15 +133,21 @@ func Load() *Config {
 			MeilisearchURL: envOrDefault("MEILISEARCH_URL", "http://127.0.0.1:7700"),
 			MeilisearchKey: envOrDefault("MEILISEARCH_KEY", ""),
 		},
-	}
+		CORS: CORSConfig{
+			AllowOrigins: envOrDefault(
+				"CORS_ALLOW_ORIGINS",
+				"http://127.0.0.1:2333,https://www.kungal.com",
+			),
+		},
+	}, nil
 }
 
-func mustEnv(key string) string {
+func requireEnv(key string) (string, error) {
 	val := os.Getenv(key)
 	if val == "" {
-		panic(fmt.Sprintf("环境变量 %s 未设置", key))
+		return "", fmt.Errorf("环境变量 %s 未设置", key)
 	}
-	return val
+	return val, nil
 }
 
 func envOrDefault(key, fallback string) string {

@@ -24,7 +24,11 @@ func main() {
 	migrationsDir := flag.String("path", "migrations", "Path to migration files")
 	flag.Parse()
 
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("加载配置失败", "error", err)
+		os.Exit(1)
+	}
 	logger.Init(cfg.Server.Mode)
 
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)

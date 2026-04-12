@@ -7,8 +7,8 @@ import "time"
 // ──────────────────────────────────────────
 
 type OAuthCallbackRequest struct {
-	Code         string `json:"code" validate:"required"`
-	CodeVerifier string `json:"code_verifier" validate:"required"`
+	Code         string `json:"code" validate:"required,max=2048"`
+	CodeVerifier string `json:"code_verifier" validate:"required,max=256"`
 }
 
 type SessionResponse struct {

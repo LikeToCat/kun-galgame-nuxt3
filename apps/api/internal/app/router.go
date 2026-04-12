@@ -1,13 +1,15 @@
 package app
 
 import (
+	"time"
+
 	"kun-galgame-api/internal/middleware"
 
 	fiberCors "github.com/gofiber/fiber/v2/middleware/cors"
 )
 
 func (a *App) setupRoutes() {
-	a.Fiber.Use(fiberCors.New(middleware.CORS("http://127.0.0.1:2333,https://www.kungal.com")))
+	a.Fiber.Use(fiberCors.New(middleware.CORS(a.Config.CORS.AllowOrigins)))
 
 	api := a.Fiber.Group("/api")
 
@@ -23,14 +25,20 @@ func (a *App) setupRoutes() {
 	authed := api.Group("", middleware.Auth(a.Redis, a.Config.OAuth))
 	authed.Get("/auth/me", a.OAuthHandler.Me)
 
+	// Rate limiters for sensitive mutations
+	checkInRL := middleware.RateLimit(a.Redis, "checkin", 1, 24*time.Hour)
+	usernameRL := middleware.RateLimit(a.Redis, "username", 3, time.Hour)
+	emailRL := middleware.RateLimit(a.Redis, "email", 3, time.Hour)
+	avatarRL := middleware.RateLimit(a.Redis, "avatar", 5, time.Hour)
+
 	// ── User routes (authenticated, fixed paths — must be before :uid) ──
-	authed.Post("/user/check-in", a.UserHandler.CheckIn)
+	authed.Post("/user/check-in", checkInRL, a.UserHandler.CheckIn)
 	authed.Put("/user/bio", a.UserHandler.UpdateBio)
-	authed.Put("/user/username", a.UserHandler.UpdateUsername)
-	authed.Put("/user/email", a.UserHandler.UpdateEmail)
+	authed.Put("/user/username", usernameRL, a.UserHandler.UpdateUsername)
+	authed.Put("/user/email", emailRL, a.UserHandler.UpdateEmail)
 	authed.Get("/user/email", a.UserHandler.GetEmail)
 	authed.Get("/user/status", a.UserHandler.GetStatus)
-	authed.Post("/user/avatar", a.UserHandler.UploadAvatar)
+	authed.Post("/user/avatar", avatarRL, a.UserHandler.UploadAvatar)
 
 	// ── User routes (public, parameterized — after fixed paths) ─────
 	api.Get("/user/:uid", a.UserHandler.GetProfile)

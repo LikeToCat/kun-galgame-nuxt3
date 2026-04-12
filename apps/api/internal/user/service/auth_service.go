@@ -82,7 +82,10 @@ func (s *AuthService) OAuthCallback(ctx context.Context, req *dto.OAuthCallbackR
 		OAuthExpiresAt:    time.Now().Unix() + int64(tokenResp.ExpiresIn),
 	}
 
-	data, _ := json.Marshal(sessionData)
+	data, err := json.Marshal(sessionData)
+	if err != nil {
+		return nil, errors.ErrInternal("序列化会话数据失败")
+	}
 	s.rdb.Set(ctx, "session:"+sessionToken, data, 7*24*time.Hour)
 
 	return &dto.SessionResponse{
@@ -159,7 +162,10 @@ func (s *AuthService) exchangeCode(code, codeVerifier string) (*oauthTokenRespon
 		"client_secret": s.oauthCfg.ClientSecret,
 		"code_verifier": codeVerifier,
 	}
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("序列化 token 请求失败: %w", err)
+	}
 
 	resp, err := http.Post(
 		s.oauthCfg.ServerURL+"/oauth/token",
@@ -171,7 +177,14 @@ func (s *AuthService) exchangeCode(code, codeVerifier string) (*oauthTokenRespon
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OAuth token 请求失败, 状态码: %d", resp.StatusCode)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取 token 响应失败: %w", err)
+	}
 
 	// /oauth/token returns { code: 0, message: "成功", data: { access_token, ... } }
 	var wrapper struct {
@@ -191,7 +204,10 @@ func (s *AuthService) exchangeCode(code, codeVerifier string) (*oauthTokenRespon
 }
 
 func (s *AuthService) fetchUserInfo(accessToken string) (*oauthUserInfo, error) {
-	req, _ := http.NewRequest("GET", s.oauthCfg.ServerURL+"/oauth/userinfo", nil)
+	req, err := http.NewRequest("GET", s.oauthCfg.ServerURL+"/oauth/userinfo", nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建 userinfo 请求失败: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -200,7 +216,14 @@ func (s *AuthService) fetchUserInfo(accessToken string) (*oauthUserInfo, error) 
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("userinfo 请求失败, 状态码: %d", resp.StatusCode)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取 userinfo 响应失败: %w", err)
+	}
 
 	// /oauth/userinfo returns { code: 0, message: "成功", data: { sub, name, ... } }
 	var wrapper struct {
@@ -217,7 +240,10 @@ func (s *AuthService) fetchUserInfo(accessToken string) (*oauthUserInfo, error) 
 }
 
 func (s *AuthService) revokeToken(refreshToken string) error {
-	payload, _ := json.Marshal(map[string]string{"token": refreshToken})
+	payload, err := json.Marshal(map[string]string{"token": refreshToken})
+	if err != nil {
+		return fmt.Errorf("序列化 revoke 请求失败: %w", err)
+	}
 	resp, err := http.Post(
 		s.oauthCfg.ServerURL+"/oauth/revoke",
 		"application/json",
@@ -237,7 +263,10 @@ func (s *AuthService) RefreshOAuthToken(refreshToken string) (*oauthTokenRespons
 		"refresh_token": refreshToken,
 		"client_id":     s.oauthCfg.ClientID,
 	}
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("序列化刷新请求失败: %w", err)
+	}
 
 	resp, err := http.Post(
 		s.oauthCfg.ServerURL+"/oauth/token",
@@ -249,14 +278,21 @@ func (s *AuthService) RefreshOAuthToken(refreshToken string) (*oauthTokenRespons
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("刷新 token 失败, 状态码: %d", resp.StatusCode)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取刷新响应失败: %w", err)
+	}
 
 	var wrapper struct {
 		Code int                 `json:"code"`
 		Data *oauthTokenResponse `json:"data"`
 	}
 	if err := json.Unmarshal(respBody, &wrapper); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("解析刷新响应失败: %w", err)
 	}
 	if wrapper.Code != 0 || wrapper.Data == nil || wrapper.Data.AccessToken == "" {
 		return nil, fmt.Errorf("刷新 token 失败: %s", string(respBody))

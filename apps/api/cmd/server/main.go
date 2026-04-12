@@ -17,7 +17,11 @@ func main() {
 	// Load .env (ignore error in production where env vars are set externally)
 	_ = godotenv.Load()
 
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("加载配置失败", "error", err)
+		os.Exit(1)
+	}
 	logger.Init(cfg.Server.Mode)
 
 	application := app.New(cfg)

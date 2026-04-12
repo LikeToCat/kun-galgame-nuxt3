@@ -1,10 +1,10 @@
 package middleware
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -47,7 +47,7 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 			return response.Error(c, errors.ErrAuthExpired())
 		}
 
-		ctx := context.Background()
+		ctx := c.Context()
 		val, err := rdb.Get(ctx, "session:"+token).Result()
 		if err != nil {
 			return response.Error(c, errors.ErrAuthExpired())
@@ -60,17 +60,37 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 
 		// If OAuth access token is expired, try to refresh it
 		if session.OAuthExpiresAt > 0 && time.Now().Unix() > session.OAuthExpiresAt {
-			refreshed, refreshErr := refreshOAuthToken(oauthCfg, session.OAuthRefreshToken)
-			if refreshErr != nil {
-				rdb.Del(ctx, "session:"+token)
-				return response.Error(c, errors.ErrAuthExpired())
-			}
-			session.OAuthAccessToken = refreshed.AccessToken
-			session.OAuthRefreshToken = refreshed.RefreshToken
-			session.OAuthExpiresAt = time.Now().Unix() + int64(refreshed.ExpiresIn)
+			// Use Redis SETNX as a distributed lock to prevent concurrent refreshes
+			lockKey := "refresh_lock:" + token
+			locked, _ := rdb.SetNX(ctx, lockKey, "1", 10*time.Second).Result()
+			if locked {
+				defer rdb.Del(ctx, lockKey)
+				refreshed, refreshErr := refreshOAuthToken(oauthCfg, session.OAuthRefreshToken)
+				if refreshErr != nil {
+					slog.Warn("OAuth token 刷新失败", "error", refreshErr)
+					rdb.Del(ctx, "session:"+token)
+					return response.Error(c, errors.ErrAuthExpired())
+				}
+				session.OAuthAccessToken = refreshed.AccessToken
+				session.OAuthRefreshToken = refreshed.RefreshToken
+				session.OAuthExpiresAt = time.Now().Unix() + int64(refreshed.ExpiresIn)
 
-			data, _ := json.Marshal(session)
-			rdb.Set(ctx, "session:"+token, data, 7*24*time.Hour)
+				data, err := json.Marshal(session)
+				if err != nil {
+					slog.Error("序列化 session 失败", "error", err)
+					return response.Error(c, errors.ErrInternal("服务器内部错误"))
+				}
+				rdb.Set(ctx, "session:"+token, data, 7*24*time.Hour)
+			} else {
+				// Another request is refreshing, re-read session from Redis
+				val, err = rdb.Get(ctx, "session:"+token).Result()
+				if err != nil {
+					return response.Error(c, errors.ErrAuthExpired())
+				}
+				if err := json.Unmarshal([]byte(val), &session); err != nil {
+					return response.Error(c, errors.ErrAuthExpired())
+				}
+			}
 		}
 
 		c.Locals(string(UserInfoKey), &session.UserInfo)
@@ -87,7 +107,7 @@ func OptionalAuth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler 
 			return c.Next()
 		}
 
-		ctx := context.Background()
+		ctx := c.Context()
 		val, err := rdb.Get(ctx, "session:"+token).Result()
 		if err != nil {
 			return c.Next()
@@ -128,32 +148,44 @@ type tokenResponse struct {
 }
 
 func refreshOAuthToken(cfg config.OAuthConfig, refreshToken string) (*tokenResponse, error) {
-	body := fmt.Sprintf(
-		`{"grant_type":"refresh_token","refresh_token":"%s","client_id":"%s"}`,
-		refreshToken, cfg.ClientID,
-	)
+	payload := map[string]string{
+		"grant_type":    "refresh_token",
+		"refresh_token": refreshToken,
+		"client_id":     cfg.ClientID,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("序列化刷新请求失败: %w", err)
+	}
 
 	resp, err := http.Post(
 		cfg.ServerURL+"/oauth/token",
 		"application/json",
-		strings.NewReader(body),
+		strings.NewReader(string(body)),
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OAuth token 刷新失败, 状态码: %d", resp.StatusCode)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取刷新响应失败: %w", err)
+	}
 
 	var wrapper struct {
 		Code int            `json:"code"`
 		Data *tokenResponse `json:"data"`
 	}
 	if err := json.Unmarshal(respBody, &wrapper); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("解析刷新响应失败: %w", err)
 	}
 	if wrapper.Code != 0 || wrapper.Data == nil {
-		return nil, fmt.Errorf("OAuth token 刷新失败")
+		return nil, fmt.Errorf("OAuth token 刷新失败: %s", string(respBody))
 	}
 	return wrapper.Data, nil
 }
