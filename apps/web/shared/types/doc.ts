@@ -66,8 +66,6 @@ export type DocArticleSummary = DocArticle
 export type DocArticleDetail = DocArticle
 
 export interface DocArticleListResponse {
-  articles: DocArticle[]
-  totalCount: number
-  page: number
-  limit: number
+  items: DocArticle[]
+  total: number
 }

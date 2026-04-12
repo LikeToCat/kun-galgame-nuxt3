@@ -13,7 +13,7 @@ const { data: articleResponse } = await useKunFetch<DocArticleListResponse>(
   }
 )
 
-const articles = computed(() => articleResponse.value?.articles || [])
+const articles = computed(() => articleResponse.value?.items || [])
 
 const currentIndex = computed(() => {
   return articles.value.findIndex((article) => article.path === route.path)

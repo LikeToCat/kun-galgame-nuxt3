@@ -16,7 +16,7 @@ const { data: articleResponse } = await useKunFetch<DocArticleListResponse>(
   }
 )
 
-const articles = computed(() => articleResponse.value?.articles || [])
+const articles = computed(() => articleResponse.value?.items || [])
 </script>
 
 <template>

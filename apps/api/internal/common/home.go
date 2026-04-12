@@ -64,6 +64,7 @@ type HomeTopic struct {
 	IsPollTopic      bool          `json:"isPollTopic"`
 	IsNSFWTopic      bool          `json:"isNSFWTopic"`
 	Section          []string      `json:"section"`
+	Tag              []string      `json:"tag"`
 	User             HomeBriefUser `json:"user"`
 	Status           int           `json:"status"`
 	UpvoteTime       *time.Time    `json:"upvoteTime"`
@@ -270,8 +271,35 @@ func (h *HomeHandler) getHomeTopics(isSFW bool) ([]HomeTopic, error) {
 		sectionMap[s.TopicID] = append(sectionMap[s.TopicID], s.SectionName)
 	}
 
+	// Fetch tags for these topics
+	type tagRow struct {
+		TopicID int    `gorm:"column:topic_id"`
+		TagName string `gorm:"column:name"`
+	}
+	var tags []tagRow
+	if len(topicIDs) > 0 {
+		h.db.Table("topic_tag_relation ttr").
+			Select("ttr.topic_id, tt.name").
+			Joins("JOIN topic_tag tt ON tt.id = ttr.tag_id").
+			Where("ttr.topic_id IN ?", topicIDs).
+			Find(&tags)
+	}
+	tagMap := map[int][]string{}
+	for _, t := range tags {
+		tagMap[t.TopicID] = append(tagMap[t.TopicID], t.TagName)
+	}
+
 	result := make([]HomeTopic, len(rows))
 	for i, r := range rows {
+		topicTags := tagMap[r.ID]
+		if topicTags == nil {
+			topicTags = []string{}
+		}
+		topicSections := sectionMap[r.ID]
+		if topicSections == nil {
+			topicSections = []string{}
+		}
+
 		result[i] = HomeTopic{
 			ID:               r.ID,
 			Title:            r.Title,
@@ -280,16 +308,14 @@ func (h *HomeHandler) getHomeTopics(isSFW bool) ([]HomeTopic, error) {
 			ReplyCount:       r.ReplyCount,
 			CommentCount:     r.CommentCount,
 			HasBestAnswer:    r.BestAnswerID != nil,
-			IsPollTopic:      false, // TODO: add poll_count to topic or query
+			IsPollTopic:      false,
 			IsNSFWTopic:      r.IsNSFW,
-			Section:          sectionMap[r.ID],
+			Section:          topicSections,
+			Tag:              topicTags,
 			User:             HomeBriefUser{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
 			Status:           r.Status,
 			UpvoteTime:       r.UpvoteTime,
 			StatusUpdateTime: r.StatusUpdateTime,
-		}
-		if result[i].Section == nil {
-			result[i].Section = []string{}
 		}
 	}
 

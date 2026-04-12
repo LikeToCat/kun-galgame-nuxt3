@@ -12,6 +12,7 @@ export interface HomeTopic {
   view: number
 
   section: string[]
+  tag: string[]
   user: KunUser
   status: number
   hasBestAnswer: boolean

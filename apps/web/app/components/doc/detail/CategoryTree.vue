@@ -20,8 +20,8 @@ const { data: articleResponse } = await useKunFetch<DocArticleListResponse>(
 
 const expandedCategories = ref<Record<number, boolean>>({})
 
-const categories = computed(() => categoryResponse.value?.categories || [])
-const articles = computed(() => articleResponse.value?.articles || [])
+const categories = computed(() => categoryResponse.value?.items || [])
+const articles = computed(() => articleResponse.value?.items || [])
 
 watch(
   categories,

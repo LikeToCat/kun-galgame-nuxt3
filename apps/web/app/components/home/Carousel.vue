@@ -14,7 +14,7 @@ const { data: pinnedResponse } = await useKunFetch<DocArticleListResponse>(
   }
 )
 
-const pinnedPosts = computed(() => pinnedResponse.value?.articles || [])
+const pinnedPosts = computed(() => pinnedResponse.value?.items || [])
 
 const currentSlide = ref(0)
 const autoplayInterval = ref<NodeJS.Timeout>()
