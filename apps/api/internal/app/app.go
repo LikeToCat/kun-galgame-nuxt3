@@ -37,6 +37,8 @@ type App struct {
 	UserHandler  *handler.UserHandler
 	HomeHandler  *common.HomeHandler
 	TopicHandler *topicHandler.TopicHandler
+	ReplyHandler *topicHandler.ReplyHandler
+	PollHandler  *topicHandler.PollHandler
 }
 
 func New(cfg *config.Config) *App {
@@ -55,8 +57,15 @@ func New(cfg *config.Config) *App {
 
 	// Topic
 	topicRepository := topicRepo.NewTopicRepository(db)
+	replyRepository := topicRepo.NewReplyRepository(db)
+	pollRepository := topicRepo.NewPollRepository(db)
 	topicSvc := topicService.NewTopicService(topicRepository, rdb)
+	replySvc := topicService.NewReplyService(replyRepository, topicRepository, rdb)
+	commentSvc := topicService.NewCommentService(replyRepository, rdb)
+	pollSvc := topicService.NewPollService(pollRepository, topicRepository, rdb)
 	topicHdl := topicHandler.NewTopicHandler(topicSvc)
+	replyHdl := topicHandler.NewReplyHandler(replySvc, commentSvc)
+	pollHdl := topicHandler.NewPollHandler(pollSvc)
 
 	// Handlers
 	oauthHandler := handler.NewOAuthHandler(authService, cfg.Server.Mode == "prod")
@@ -81,6 +90,8 @@ func New(cfg *config.Config) *App {
 		UserHandler:  userHandler,
 		HomeHandler:  homeHandler,
 		TopicHandler: topicHdl,
+		ReplyHandler: replyHdl,
+		PollHandler:  pollHdl,
 	}
 
 	app.setupRoutes()

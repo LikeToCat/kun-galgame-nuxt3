@@ -54,6 +54,10 @@ func (a *App) setupRoutes() {
 	optAuth := api.Group("", middleware.OptionalAuth(a.Redis, a.Config.OAuth))
 	optAuth.Get("/topic", a.TopicHandler.GetList)
 	optAuth.Get("/topic/:tid", a.TopicHandler.GetDetail)
+	optAuth.Get("/topic/:tid/reply", a.ReplyHandler.GetReplies)
+	optAuth.Get("/topic/:tid/reply/detail", a.ReplyHandler.GetReplyDetail)
+	optAuth.Get("/topic/:tid/poll/topic", a.PollHandler.GetPollsByTopic)
+	optAuth.Get("/topic/:tid/poll/log", a.PollHandler.GetVoteLog)
 
 	// ── Topic routes (authenticated) ──
 	authed.Post("/topic", a.TopicHandler.Create)
@@ -64,4 +68,22 @@ func (a *App) setupRoutes() {
 	authed.Put("/topic/:tid/favorite", a.TopicHandler.ToggleFavorite)
 	authed.Put("/topic/:tid/hide", a.TopicHandler.ToggleHide)
 	authed.Put("/topic/:tid/best-answer", a.TopicHandler.SetBestAnswer)
+
+	// ── Reply routes (authenticated) ──
+	authed.Post("/topic/:tid/reply", a.ReplyHandler.CreateReply)
+	authed.Put("/topic/:tid/reply", a.ReplyHandler.UpdateReply)
+	authed.Delete("/topic/:tid/reply", a.ReplyHandler.DeleteReply)
+	authed.Put("/topic/:tid/reply/like", a.ReplyHandler.ToggleReplyLike)
+	authed.Put("/topic/:tid/reply/dislike", a.ReplyHandler.ToggleReplyDislike)
+	authed.Put("/topic/:tid/reply/pin", a.ReplyHandler.PinReply)
+
+	// ── Comment routes (authenticated) ──
+	authed.Post("/topic/:tid/comment", a.ReplyHandler.CreateComment)
+	authed.Put("/topic/:tid/comment/like", a.ReplyHandler.ToggleCommentLike)
+	authed.Delete("/topic/:tid/comment", a.ReplyHandler.DeleteComment)
+
+	// ── Poll routes (authenticated) ──
+	authed.Post("/topic/:tid/poll", a.PollHandler.CreatePoll)
+	authed.Delete("/topic/:tid/poll", a.PollHandler.DeletePoll)
+	authed.Post("/topic/:tid/poll/vote", a.PollHandler.Vote)
 }
