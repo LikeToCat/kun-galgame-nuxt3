@@ -5,6 +5,7 @@ import (
 
 	adminHandler "kun-galgame-api/internal/admin/handler"
 	"kun-galgame-api/internal/common"
+	docHandler "kun-galgame-api/internal/doc/handler"
 	"kun-galgame-api/internal/infrastructure/cache"
 	"kun-galgame-api/internal/infrastructure/database"
 	"kun-galgame-api/internal/infrastructure/mail"
@@ -18,6 +19,7 @@ import (
 	"kun-galgame-api/internal/user/handler"
 	"kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/internal/user/service"
+	websiteHandler "kun-galgame-api/internal/website/handler"
 	"kun-galgame-api/pkg/config"
 	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
@@ -47,6 +49,10 @@ type App struct {
 	AdminHandler   *adminHandler.AdminHandler
 	RankingHandler *common.RankingHandler
 	SectionHandler *common.SectionHandler
+	DocHandler     *docHandler.DocHandler
+	WebsiteHandler *websiteHandler.WebsiteHandler
+	UpdateHandler  *common.UpdateHandler
+	MiscHandler    *common.MiscHandler
 }
 
 func New(cfg *config.Config) *App {
@@ -73,18 +79,25 @@ func New(cfg *config.Config) *App {
 	replySvc := topicService.NewReplyService(replyRepository, topicRepository, rdb)
 	commentSvc := topicService.NewCommentService(replyRepository, rdb)
 	pollSvc := topicService.NewPollService(pollRepository, topicRepository, rdb)
-	topicHdl := topicHandler.NewTopicHandler(topicSvc)
-	replyHdl := topicHandler.NewReplyHandler(replySvc, commentSvc)
-	pollHdl := topicHandler.NewPollHandler(pollSvc)
 
 	// Handlers
-	oauthHandler := handler.NewOAuthHandler(authService, cfg.Server.Mode == "prod")
-	userHandler := handler.NewUserHandler(userService)
-	homeHandler := common.NewHomeHandler(db)
-	messageHdl := msgHandler.NewMessageHandler(messageSvc)
-	adminHdl := adminHandler.NewAdminHandler(db, rdb)
-	rankingHdl := common.NewRankingHandler(db)
-	sectionHdl := common.NewSectionHandler(db)
+	app := &App{
+		DB: db, Redis: rdb, S3: s3Client, Mailer: mailer, Config: cfg,
+		OAuthHandler:   handler.NewOAuthHandler(authService, cfg.Server.Mode == "prod"),
+		UserHandler:    handler.NewUserHandler(userService),
+		HomeHandler:    common.NewHomeHandler(db),
+		TopicHandler:   topicHandler.NewTopicHandler(topicSvc),
+		ReplyHandler:   topicHandler.NewReplyHandler(replySvc, commentSvc),
+		PollHandler:    topicHandler.NewPollHandler(pollSvc),
+		MessageHandler: msgHandler.NewMessageHandler(messageSvc),
+		AdminHandler:   adminHandler.NewAdminHandler(db, rdb),
+		RankingHandler: common.NewRankingHandler(db),
+		SectionHandler: common.NewSectionHandler(db),
+		DocHandler:     docHandler.NewDocHandler(db),
+		WebsiteHandler: websiteHandler.NewWebsiteHandler(db),
+		UpdateHandler:  common.NewUpdateHandler(db),
+		MiscHandler:    common.NewMiscHandler(db),
+	}
 
 	// Fiber
 	fiberApp := fiber.New(fiber.Config{
@@ -92,25 +105,7 @@ func New(cfg *config.Config) *App {
 		BodyLimit:    10 * 1024 * 1024,
 	})
 	fiberApp.Use(recover.New())
-
-	app := &App{
-		Fiber:          fiberApp,
-		DB:             db,
-		Redis:          rdb,
-		S3:             s3Client,
-		Mailer:         mailer,
-		Config:         cfg,
-		OAuthHandler:   oauthHandler,
-		UserHandler:    userHandler,
-		HomeHandler:    homeHandler,
-		TopicHandler:   topicHdl,
-		ReplyHandler:   replyHdl,
-		PollHandler:    pollHdl,
-		MessageHandler: messageHdl,
-		AdminHandler:   adminHdl,
-		RankingHandler: rankingHdl,
-		SectionHandler: sectionHdl,
-	}
+	app.Fiber = fiberApp
 
 	app.setupRoutes()
 	return app

@@ -21,17 +21,17 @@ func (a *App) setupRoutes() {
 	auth.Post("/oauth/callback", a.OAuthHandler.Callback)
 	auth.Post("/logout", a.OAuthHandler.Logout)
 
-	// ── Auth routes (authenticated) ────────────
+	// ���─ Auth routes (authenticated) ────────────
 	authed := api.Group("", middleware.Auth(a.Redis, a.Config.OAuth))
 	authed.Get("/auth/me", a.OAuthHandler.Me)
 
-	// Rate limiters for sensitive mutations
+	// Rate limiters
 	checkInRL := middleware.RateLimit(a.Redis, "checkin", 1, 24*time.Hour)
 	usernameRL := middleware.RateLimit(a.Redis, "username", 3, time.Hour)
 	emailRL := middleware.RateLimit(a.Redis, "email", 3, time.Hour)
 	avatarRL := middleware.RateLimit(a.Redis, "avatar", 5, time.Hour)
 
-	// ── User routes (authenticated, fixed paths — must be before :uid) ──
+	// ── User routes (authenticated, fixed paths) ──
 	authed.Post("/user/check-in", checkInRL, a.UserHandler.CheckIn)
 	authed.Put("/user/bio", a.UserHandler.UpdateBio)
 	authed.Put("/user/username", usernameRL, a.UserHandler.UpdateUsername)
@@ -40,12 +40,12 @@ func (a *App) setupRoutes() {
 	authed.Get("/user/status", a.UserHandler.GetStatus)
 	authed.Post("/user/avatar", avatarRL, a.UserHandler.UploadAvatar)
 
-	// ── User routes (public, parameterized — after fixed paths) ─────
+	// ── User routes (public, parameterized) ──
 	api.Get("/user/:uid", a.UserHandler.GetProfile)
 	api.Get("/user/:uid/galgames", a.UserHandler.GetUserGalgames)
 	api.Get("/user/:uid/topics", a.UserHandler.GetUserTopics)
 
-	// ── User admin routes ──────────────────────
+	// ── User admin routes ──
 	admin := authed.Group("", middleware.RequireRole(3))
 	admin.Put("/user/:uid/ban", a.UserHandler.BanUser)
 	admin.Delete("/user/:uid", a.UserHandler.DeleteUser)
@@ -87,33 +87,75 @@ func (a *App) setupRoutes() {
 	authed.Delete("/topic/:tid/poll", a.PollHandler.DeletePoll)
 	authed.Post("/topic/:tid/poll/vote", a.PollHandler.Vote)
 
-	// ── Message routes (authenticated) ──
+	// ── Message routes ──
 	authed.Get("/message", a.MessageHandler.GetMessages)
 	authed.Delete("/message/:id", a.MessageHandler.DeleteMessage)
 	authed.Put("/message/system/read", a.MessageHandler.MarkAllRead)
 	authed.Put("/message/admin/read", a.MessageHandler.MarkAdminRead)
 	authed.Get("/message/nav/system", a.MessageHandler.GetNavSummary)
-
-	// ── Message routes (public) ──
 	api.Get("/message/admin", a.MessageHandler.GetSystemMessages)
 
-	// ── Admin routes (role >= 3) ──
+	// ── Admin routes ──
 	admin.Get("/admin/overview/all", a.AdminHandler.GetOverview)
 	admin.Get("/admin/overview/stats", a.AdminHandler.GetStats)
 	admin.Put("/admin/setting/register", a.AdminHandler.ToggleRegisterSetting)
+	api.Get("/admin/setting/register", a.AdminHandler.GetRegisterSetting)
 	adminRead := authed.Group("", middleware.RequireRole(2))
 	adminRead.Get("/admin/user", a.AdminHandler.GetUserList)
 	adminRead.Get("/admin/user/search", a.AdminHandler.SearchUsers)
-
-	// ── Admin setting (public read) ──
-	api.Get("/admin/setting/register", a.AdminHandler.GetRegisterSetting)
 
 	// ── Ranking routes (public) ──
 	api.Get("/ranking/galgame", a.RankingHandler.GetGalgameRanking)
 	api.Get("/ranking/topic", a.RankingHandler.GetTopicRanking)
 	api.Get("/ranking/user", a.RankingHandler.GetUserRanking)
 
-	// ── Section & Category routes (public) ──
+	// ── Section & Category (public) ���─
 	api.Get("/section", a.SectionHandler.GetSectionTopics)
 	api.Get("/category", a.SectionHandler.GetCategories)
+
+	// ── Doc routes ──
+	api.Get("/doc/article", a.DocHandler.GetArticles)
+	api.Get("/doc/article/:slug", a.DocHandler.GetArticleBySlug)
+	api.Get("/doc/category", a.DocHandler.GetCategories)
+	api.Get("/doc/tag", a.DocHandler.GetTags)
+	docAdmin := authed.Group("", middleware.RequireRole(2))
+	docAdmin.Post("/doc/article", a.DocHandler.CreateArticle)
+	docAdmin.Put("/doc/article", a.DocHandler.UpdateArticle)
+	docAdmin.Delete("/doc/article", a.DocHandler.DeleteArticle)
+	docAdmin.Post("/doc/category", a.DocHandler.CreateCategory)
+	docAdmin.Put("/doc/category", a.DocHandler.UpdateCategory)
+	docAdmin.Delete("/doc/category", a.DocHandler.DeleteCategory)
+	docAdmin.Post("/doc/tag", a.DocHandler.CreateTag)
+	docAdmin.Delete("/doc/tag", a.DocHandler.DeleteTag)
+
+	// ── Website routes ──
+	optAuth.Get("/website", a.WebsiteHandler.GetWebsites)
+	optAuth.Get("/website/:domain", a.WebsiteHandler.GetWebsiteDetail)
+	api.Get("/website-category/:name", a.WebsiteHandler.GetWebsiteCategory)
+	api.Get("/website-tag", a.WebsiteHandler.GetWebsiteTags)
+	wsAdmin := authed.Group("", middleware.RequireRole(2))
+	wsAdmin.Post("/website", a.WebsiteHandler.CreateWebsite)
+	wsAdmin.Put("/website/:domain", a.WebsiteHandler.UpdateWebsite)
+	wsAdmin.Delete("/website/:domain", a.WebsiteHandler.DeleteWebsite)
+	wsAdmin.Put("/website-category", a.WebsiteHandler.UpdateWebsiteCategory)
+	wsAdmin.Post("/website-tag", a.WebsiteHandler.CreateWebsiteTag)
+	wsAdmin.Put("/website-tag", a.WebsiteHandler.UpdateWebsiteTag)
+	wsAdmin.Delete("/website-tag", a.WebsiteHandler.DeleteWebsiteTag)
+	authed.Put("/website/:domain/like", a.WebsiteHandler.ToggleLike)
+	authed.Put("/website/:domain/favorite", a.WebsiteHandler.ToggleFavorite)
+	authed.Post("/website/:domain/comment", a.WebsiteHandler.CreateComment)
+	authed.Delete("/website/:domain/comment", a.WebsiteHandler.DeleteComment)
+
+	// ── Update routes ──
+	api.Get("/update/history", a.UpdateHandler.GetHistory)
+	api.Get("/update/todo", a.UpdateHandler.GetTodos)
+	updateAdmin := authed.Group("", middleware.RequireRole(2))
+	updateAdmin.Post("/update/history", a.UpdateHandler.CreateHistory)
+	updateAdmin.Delete("/update/history", a.UpdateHandler.DeleteHistory)
+	updateAdmin.Post("/update/todo", a.UpdateHandler.CreateTodo)
+	updateAdmin.Delete("/update/todo", a.UpdateHandler.DeleteTodo)
+
+	// ── Misc routes ──
+	authed.Post("/report/submit", a.MiscHandler.SubmitReport)
+	api.Get("/rss/topic", a.MiscHandler.GetTopicRSS)
 }
