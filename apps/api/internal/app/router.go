@@ -49,4 +49,19 @@ func (a *App) setupRoutes() {
 	admin := authed.Group("", middleware.RequireRole(3))
 	admin.Put("/user/:uid/ban", a.UserHandler.BanUser)
 	admin.Delete("/user/:uid", a.UserHandler.DeleteUser)
+
+	// ── Topic routes (public, optional auth for interaction status) ──
+	optAuth := api.Group("", middleware.OptionalAuth(a.Redis, a.Config.OAuth))
+	optAuth.Get("/topic", a.TopicHandler.GetList)
+	optAuth.Get("/topic/:tid", a.TopicHandler.GetDetail)
+
+	// ── Topic routes (authenticated) ──
+	authed.Post("/topic", a.TopicHandler.Create)
+	authed.Put("/topic/:tid", a.TopicHandler.Update)
+	authed.Put("/topic/:tid/like", a.TopicHandler.ToggleLike)
+	authed.Put("/topic/:tid/dislike", a.TopicHandler.ToggleDislike)
+	authed.Put("/topic/:tid/upvote", a.TopicHandler.Upvote)
+	authed.Put("/topic/:tid/favorite", a.TopicHandler.ToggleFavorite)
+	authed.Put("/topic/:tid/hide", a.TopicHandler.ToggleHide)
+	authed.Put("/topic/:tid/best-answer", a.TopicHandler.SetBestAnswer)
 }

@@ -8,6 +8,9 @@ import (
 	"kun-galgame-api/internal/infrastructure/database"
 	"kun-galgame-api/internal/infrastructure/mail"
 	"kun-galgame-api/internal/infrastructure/storage"
+	topicHandler "kun-galgame-api/internal/topic/handler"
+	topicRepo "kun-galgame-api/internal/topic/repository"
+	topicService "kun-galgame-api/internal/topic/service"
 	"kun-galgame-api/internal/user/handler"
 	"kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/internal/user/service"
@@ -33,6 +36,7 @@ type App struct {
 	OAuthHandler *handler.OAuthHandler
 	UserHandler  *handler.UserHandler
 	HomeHandler  *common.HomeHandler
+	TopicHandler *topicHandler.TopicHandler
 }
 
 func New(cfg *config.Config) *App {
@@ -48,6 +52,11 @@ func New(cfg *config.Config) *App {
 	// Services
 	authService := service.NewAuthService(userRepo, rdb, cfg.OAuth)
 	userService := service.NewUserService(userRepo, rdb)
+
+	// Topic
+	topicRepository := topicRepo.NewTopicRepository(db)
+	topicSvc := topicService.NewTopicService(topicRepository, rdb)
+	topicHdl := topicHandler.NewTopicHandler(topicSvc)
 
 	// Handlers
 	oauthHandler := handler.NewOAuthHandler(authService, cfg.Server.Mode == "prod")
@@ -71,6 +80,7 @@ func New(cfg *config.Config) *App {
 		OAuthHandler: oauthHandler,
 		UserHandler:  userHandler,
 		HomeHandler:  homeHandler,
+		TopicHandler: topicHdl,
 	}
 
 	app.setupRoutes()
