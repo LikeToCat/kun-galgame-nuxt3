@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { getMessageI18n } from '../utils/getMessageI18n'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const props = defineProps<{
   message: Message
@@ -15,11 +14,9 @@ const handleDeleteMessage = async (messageId: number) => {
     return
   }
 
-  const result = await $fetch(`/api/message/${messageId}`, {
+  const result = await kunFetch(`/message/${messageId}`, {
     method: 'DELETE',
-    query: { messageId },
-    watch: false,
-    ...kungalgameResponseHandler
+    query: { messageId }
   })
 
   if (result) {

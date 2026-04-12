@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 definePageMeta({
   middleware: 'auth'
 })
@@ -15,10 +13,8 @@ const pageData = reactive({
   sortOrder: 'desc'
 })
 
-const { data, status, refresh } = await useFetch(`/api/message`, {
-  method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
+const { data, status, refresh } = await useKunFetch<MessageList>('/message', {
+  query: pageData
 })
 
 onMounted(async () => {
@@ -26,10 +22,7 @@ onMounted(async () => {
     (message) => message.status === 'unread'
   )
   if (hasUnreadMessage) {
-    await $fetch(`/api/message/system/read`, {
-      method: 'PUT',
-      ...kungalgameResponseHandler
-    })
+    await kunFetch('/message/system/read', { method: 'PUT' })
   }
 })
 </script>

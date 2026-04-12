@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import {
   kunUserReplyNavItem,
   type KUN_USER_PAGE_REPLY_TYPE
@@ -18,11 +17,10 @@ const pageData = reactive({
   type: props.type
 })
 
-const { data, status } = await useFetch(`/api/user/${props.uid}/replies`, {
-  method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
-})
+const { data, status } = await useKunFetch<{
+  replies: UserReply[]
+  totalCount: number
+}>(`/user/${props.uid}/replies`, { query: pageData })
 </script>
 
 <template>

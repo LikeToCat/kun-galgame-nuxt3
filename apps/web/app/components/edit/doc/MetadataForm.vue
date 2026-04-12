@@ -2,7 +2,6 @@
 import { KUN_DOC_CATEGORY_MAP, KUN_DOC_STATUS_OPTIONS } from '~/constants/doc'
 import { useDocEditorContext } from './context'
 import { normalizeDocSlug } from '~/utils/doc'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { KunSelectOption } from '~/components/kun/select/type'
 
 const { form, categories, tags, refreshTags, readingMinute } =
@@ -81,14 +80,13 @@ const handleCreateTag = async () => {
 
   isCreatingTag.value = true
   try {
-    const created = await $fetch<DocTagItem>('/api/doc/tag', {
+    const created = await kunFetch<DocTagItem>('/doc/tag', {
       method: 'POST',
       body: {
         slug,
         title,
         description: newTagDescription.value.trim()
-      },
-      ...kungalgameResponseHandler
+      }
     })
 
     if (created) {

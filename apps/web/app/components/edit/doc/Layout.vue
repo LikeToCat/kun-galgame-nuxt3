@@ -2,8 +2,6 @@
 import { provideDocEditorContext } from './context'
 import type { DocEditorMode, DocEditorForm } from './type'
 import { computeReadingMinute } from '~/utils/doc'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = withDefaults(
   defineProps<{
     mode: DocEditorMode
@@ -16,26 +14,24 @@ const props = withDefaults(
 
 const isRewriteMode = computed(() => props.mode === 'rewrite')
 
-const { data: categoryResponse } = await useFetch<DocCategoryListResponse>(
-  '/api/doc/category',
+const { data: categoryResponse } = await useKunFetch<DocCategoryListResponse>(
+  '/doc/category',
   {
     query: {
       page: 1,
       limit: 100,
       keyword: ''
-    },
-    ...kungalgameResponseHandler
+    }
   }
 )
 
 const { data: tagResponse, refresh: refreshTagResponse } =
-  await useFetch<DocTagListResponse>('/api/doc/tag', {
+  await useKunFetch<DocTagListResponse>('/doc/tag', {
     query: {
       page: 1,
       limit: 100,
       keyword: ''
-    },
-    ...kungalgameResponseHandler
+    }
   })
 
 const categories = ref<DocCategoryItem[]>([])
@@ -165,10 +161,9 @@ const handleSubmit = async () => {
       body.articleId = form.articleId
     }
 
-    const result = await $fetch<DocArticleDetail>('/api/doc/article', {
+    const result = await kunFetch<DocArticleDetail>('/doc/article', {
       method: isRewriteMode.value ? 'PUT' : 'POST',
-      body,
-      ...kungalgameResponseHandler
+      body
     })
 
     if (result) {

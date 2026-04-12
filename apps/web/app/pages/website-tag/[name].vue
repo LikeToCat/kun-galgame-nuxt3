@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type {
   CreateWebsiteTagPayload,
   UpdateWebsiteTagPayload
@@ -13,12 +12,13 @@ const tagName = computed(() => {
 const showTagModal = ref(false)
 const editingTag = ref<UpdateWebsiteTagPayload>({} as UpdateWebsiteTagPayload)
 
-const { data } = await useFetch(`/api/website-tag/${tagName.value}`, {
-  method: 'GET',
-  watch: false,
-  query: { name: tagName.value },
-  ...kungalgameResponseHandler
-})
+const { data } = await useKunFetch<WebsiteTagDetail>(
+  `/website-tag/${tagName.value}`,
+  {
+    watch: false,
+    query: { name: tagName.value }
+  }
+)
 
 const openEditTagModal = () => {
   if (!data.value) {
@@ -38,11 +38,9 @@ const handleTagSubmit = async (
   data: CreateWebsiteTagPayload | UpdateWebsiteTagPayload
 ) => {
   if ('tagId' in data) {
-    const result = await $fetch(`/api/website-tag`, {
+    const result = await kunFetch(`/website-tag`, {
       method: 'PUT',
-      watch: false,
-      body: data,
-      ...kungalgameResponseHandler
+      body: data
     })
 
     if (result) {

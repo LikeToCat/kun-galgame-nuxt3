@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   comment: TopicComment
 }>()
@@ -15,12 +13,13 @@ const likeComment = async () => {
     return
   }
 
-  const result = await $fetch(`/api/topic/${props.comment.id}/comment/like`, {
-    method: 'PUT',
-    body: { commentId: props.comment.id },
-    watch: false,
-    ...kungalgameResponseHandler
-  })
+  const result = await kunFetch<string>(
+    `/topic/${props.comment.id}/comment/like`,
+    {
+      method: 'PUT',
+      body: { commentId: props.comment.id }
+    }
+  )
 
   if (result) {
     likeCount.value += isLiked.value ? -1 : 1

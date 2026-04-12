@@ -26,14 +26,17 @@ const handlePostComment = async () => {
   }
 
   isPublishing.value = true
-  const res = await $fetch(`/api/website/${props.websiteId}/comment`, {
-    method: 'POST',
-    body: {
-      websiteId: props.websiteId,
-      content: newCommentContent.value,
-      parentId: props.parentId
+  const res = await kunFetch<WebsiteComment>(
+    `/website/${props.websiteId}/comment`,
+    {
+      method: 'POST',
+      body: {
+        websiteId: props.websiteId,
+        content: newCommentContent.value,
+        parentId: props.parentId
+      }
     }
-  })
+  )
 
   if (res) {
     emits('setNewComment', res)

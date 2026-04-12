@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const uploadedImage = ref<Blob>()
 const isUploading = ref(false)
 const { avatar, avatarMin } = storeToRefs(usePersistUserStore())
@@ -17,11 +15,9 @@ const handleChangeAvatar = async () => {
   isUploading.value = true
   useMessage(10114, 'info')
 
-  const avatarLink = await $fetch('/api/user/avatar', {
+  const avatarLink = await kunFetch<string>('/user/avatar', {
     method: 'POST',
-    body: formData,
-    watch: false,
-    ...kungalgameResponseHandler
+    body: formData
   })
 
   if (avatarLink) {

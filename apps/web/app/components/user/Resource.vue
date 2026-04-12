@@ -29,14 +29,10 @@ const pageData = reactive({
   userId: props.uid
 })
 
-const { data, status, refresh } = await useFetch(
-  `/api/user/${props.uid}/resources`,
-  {
-    method: 'GET',
-    query: pageData,
-    ...kungalgameResponseHandler
-  }
-)
+const { data, status, refresh } = await useKunFetch<{
+  resources: UserGalgameResource[]
+  totalCount: number
+}>(`/user/${props.uid}/resources`, { query: pageData })
 
 const draftLinks = ref<string[]>([])
 

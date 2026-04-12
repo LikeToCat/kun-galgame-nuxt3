@@ -5,7 +5,6 @@ import {
   KUN_WEBSITE_LANGUAGE_MAP,
   KUN_WEBSITE_ACG_LIMIT_MAP
 } from '~/constants/galgameWebsite'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { CreateWebsitePayload, UpdateWebsitePayload } from './types'
 import type { KunSelectOption } from '~/components/kun/select/type'
 
@@ -57,10 +56,7 @@ const getInitialFormData = (): WebsiteData => ({
 
 const formData = reactive<WebsiteData>(getInitialFormData())
 
-const { data, status } = useFetch('/api/website-tag', {
-  method: 'GET',
-  ...kungalgameResponseHandler
-})
+const { data, status } = useKunFetch<WebsiteTag[]>('/website-tag')
 
 watch(
   () => isModalOpen.value,

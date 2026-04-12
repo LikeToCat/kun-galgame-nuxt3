@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   comment: TopicComment
 }>()
@@ -38,12 +36,13 @@ const handleDeleteComment = async () => {
     return
   }
 
-  const result = await $fetch(`/api/topic/${props.comment.topicId}/comment`, {
-    method: 'DELETE',
-    watch: false,
-    query: { commentId: props.comment.id },
-    ...kungalgameResponseHandler
-  })
+  const result = await kunFetch<string>(
+    `/topic/${props.comment.topicId}/comment`,
+    {
+      method: 'DELETE',
+      query: { commentId: props.comment.id }
+    }
+  )
 
   if (result) {
     emits('removeComment', props.comment.id)

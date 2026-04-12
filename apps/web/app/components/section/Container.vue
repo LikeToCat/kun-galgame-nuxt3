@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { KUN_TOPIC_CATEGORY, KUN_TOPIC_SECTION } from '~/constants/topic'
 import { KUN_TOPIC_SECTION_DESCRIPTION_MAP } from '~/constants/section'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const props = defineProps<{
   section: string
@@ -17,15 +16,13 @@ const category = computed(
   () => KUN_TOPIC_CATEGORY[categoryMap[props.section[0]!]!]!
 )
 
-const { data, status } = await useFetch(`/api/section`, {
-  method: 'GET',
+const { data, status } = await useKunFetch<SectionTopicList>('/section', {
   query: {
     section: props.section,
     sortOrder: 'desc',
     page,
     limit: 30
-  },
-  ...kungalgameResponseHandler
+  }
 })
 
 watch(

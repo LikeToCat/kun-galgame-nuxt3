@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import {
   kunUserCommentNavItem,
   type KUN_USER_PAGE_COMMENT_TYPE
@@ -18,11 +17,10 @@ const pageData = reactive({
   type: props.type
 })
 
-const { data, status } = await useFetch(`/api/user/${props.uid}/comments`, {
-  method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
-})
+const { data, status } = await useKunFetch<{
+  comments: UserComment[]
+  totalCount: number
+}>(`/user/${props.uid}/comments`, { query: pageData })
 </script>
 
 <template>

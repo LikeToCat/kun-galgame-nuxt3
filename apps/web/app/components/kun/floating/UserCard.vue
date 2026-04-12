@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = withDefaults(
   defineProps<{
     userId: number
@@ -42,12 +40,11 @@ const fetchUserData = async () => {
 
   isLoading.value = true
 
-  const data = await $fetch<UserFloatingCard>(
-    `/api/user/${props.userId}/floating`,
+  const data = await kunFetch<UserFloatingCard>(
+    `/user/${props.userId}/floating`,
     {
       method: 'GET',
-      query: { userId: props.userId },
-      ...kungalgameResponseHandler
+      query: { userId: props.userId }
     }
   )
   userData.value = data

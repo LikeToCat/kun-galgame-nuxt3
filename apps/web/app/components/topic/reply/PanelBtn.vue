@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { createReplySchema, updateReplySchema } from '~/validations/topic'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const route = useRoute()
 const topicId = computed(() => {
@@ -45,12 +44,13 @@ const handlePublish = async () => {
 
   isPublishing.value = true
 
-  const reply = await $fetch(`/api/topic/${topicId.value}/reply`, {
-    method: 'POST',
-    body,
-    watch: false,
-    ...kungalgameResponseHandler
-  })
+  const reply = await kunFetch<TopicReply>(
+    `/topic/${topicId.value}/reply`,
+    {
+      method: 'POST',
+      body
+    }
+  )
 
   if (reply) {
     isEdit.value = false
@@ -90,12 +90,13 @@ const handleRewrite = async () => {
 
   isPublishing.value = true
 
-  const reply = await $fetch(`/api/topic/${topicId.value}/reply`, {
-    method: 'PUT',
-    body,
-    watch: false,
-    ...kungalgameResponseHandler
-  })
+  const reply = await kunFetch<TopicReply>(
+    `/topic/${topicId.value}/reply`,
+    {
+      method: 'PUT',
+      body
+    }
+  )
 
   if (reply) {
     useMessage(10244, 'success')

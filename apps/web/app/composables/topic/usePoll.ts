@@ -1,23 +1,27 @@
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { PollFormData } from '~/components/topic/poll/types'
 
 export const usePoll = (topicId: number) => {
   const getPoll = () => {
-    return useLazyFetch(`/api/topic/${topicId}/poll/topic`, {
-      query: { topic_id: topicId },
-      ...kungalgameResponseHandler
-    })
+    return useKunFetch<TopicPoll>(
+      `/topic/${topicId}/poll/topic`,
+      {
+        query: { topic_id: topicId },
+        lazy: true
+      }
+    )
   }
 
   const createPoll = async (data: PollFormData) => {
-    const res = await $fetch(`/api/topic/${topicId}/poll`, {
-      method: 'POST',
-      body: {
-        ...data,
-        options: data.options.map((o) => ({ text: o.text }))
-      },
-      ...kungalgameResponseHandler
-    })
+    const res = await kunFetch<TopicPoll>(
+      `/topic/${topicId}/poll`,
+      {
+        method: 'POST',
+        body: {
+          ...data,
+          options: data.options.map((o) => ({ text: o.text }))
+        }
+      }
+    )
     return res
   }
 
@@ -56,7 +60,7 @@ export const usePoll = (topicId: number) => {
       options: optionsPayload
     }
 
-    await $fetch(`/api/topic/${topicId}/poll`, {
+    await kunFetch<string>(`/topic/${topicId}/poll`, {
       method: 'PUT',
       body: requestData
     })
@@ -71,14 +75,14 @@ export const usePoll = (topicId: number) => {
       return
     }
 
-    await $fetch(`/api/topic/${topicId}/poll`, {
+    await kunFetch<string>(`/topic/${topicId}/poll`, {
       method: 'DELETE',
       query: { poll_id: pollId }
     })
   }
 
   const submitVote = async (pollId: number, optionIds: number[]) => {
-    await $fetch(`/api/topic/${topicId}/poll/vote`, {
+    await kunFetch<string>(`/topic/${topicId}/poll/vote`, {
       method: 'POST',
       body: { poll_id: pollId, option_id_array: optionIds }
     })

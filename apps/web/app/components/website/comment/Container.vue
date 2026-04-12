@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { scrollIntoComment } from './_scrollIntoComment'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   websiteId: number
 }>()
 
-const { data } = await useFetch(`/api/website/${props.websiteId}/comment`, {
-  method: 'GET',
-  watch: false,
-  query: { websiteId: props.websiteId },
-  ...kungalgameResponseHandler
-})
+const { data } = await useKunFetch<WebsiteComment[]>(
+  `/website/${props.websiteId}/comment`,
+  {
+    watch: false,
+    query: { websiteId: props.websiteId }
+  }
+)
 
 const comments = ref<WebsiteComment[]>(data.value ? data.value : [])
 

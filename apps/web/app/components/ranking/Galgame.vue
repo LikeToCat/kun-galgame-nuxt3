@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { galgameSortItem } from '~/constants/ranking'
 import { galgameRankingPageData, getRankClasses } from './pageData'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
-const { data } = await useFetch(`/api/ranking/galgame`, {
-  method: 'GET',
-  query: galgameRankingPageData,
-  ...kungalgameResponseHandler
+const { data } = await useKunFetch<RankingGalgame[]>('/ranking/galgame', {
+  query: galgameRankingPageData
 })
 </script>
 

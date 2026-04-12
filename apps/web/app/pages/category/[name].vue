@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { KUN_TOPIC_CATEGORY } from '~/constants/topic'
 import { KUN_CATEGORY_DESCRIPTION_MAP } from '~/constants/category'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const route = useRoute()
 
@@ -9,10 +8,8 @@ const categoryName = computed(() => {
   return (route.params as { name: string }).name
 })
 
-const { data } = await useFetch(`/api/category`, {
-  method: 'GET',
-  query: { category: categoryName },
-  ...kungalgameResponseHandler
+const { data } = await useKunFetch<CategorySection[]>('/category', {
+  query: { category: categoryName }
 })
 
 useKunSeoMeta({

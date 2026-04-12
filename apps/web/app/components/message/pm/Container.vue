@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { replaceAsideItem } from '../aside/asideItemStore'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { KunContextMenuItem } from '~/components/kun/context-menu/type'
 
 const props = defineProps<{
@@ -112,13 +111,11 @@ const sendMessage = () => {
 }
 
 const getMessageHistory = async () => {
-  const histories = await $fetch(`/api/message/chat/history`, {
+  const histories = await kunFetch<ChatMessage[]>('/message/chat/history', {
     method: 'GET',
-    query: { receiverUid: uid, ...pageData },
-    watch: false,
-    ...kungalgameResponseHandler
+    query: { receiverUid: uid, ...pageData }
   })
-  const results = Array.isArray(histories) ? histories : []
+  const results = Array.isArray(histories) ? histories : [] as ChatMessage[]
   return results
 }
 

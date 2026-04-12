@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { userSortItem } from '~/constants/ranking'
 import { userRankingPageData, getRankClasses } from './pageData'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
-const { data } = await useFetch(`/api/ranking/user`, {
-  method: 'GET',
-  query: userRankingPageData,
-  ...kungalgameResponseHandler
+const { data } = await useKunFetch<RankingUser[]>('/ranking/user', {
+  query: userRankingPageData
 })
 </script>
 

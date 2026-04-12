@@ -1,5 +1,4 @@
 import { pageData } from '~/components/topic/pageData'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 export const useTopic = (topicType: 'resource' | 'all') => {
   const topics = useState<TopicCard[]>(topicType, () => [])
@@ -10,16 +9,15 @@ export const useTopic = (topicType: 'resource' | 'all') => {
 
   const getTopics = async () => {
     isFetching.value = true
-    const result = await $fetch(
-      topicType === 'resource' ? '/api/resource' : '/api/topic',
+    const result = await kunFetch<TopicCard[]>(
+      topicType === 'resource' ? '/resource' : '/topic',
       {
         method: 'GET',
-        query: pageData,
-        ...kungalgameResponseHandler
+        query: pageData
       }
     )
     isFetching.value = false
-    return result
+    return result ?? []
   }
 
   const loadInitialTopics = async () => {

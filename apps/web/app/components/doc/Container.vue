@@ -4,14 +4,17 @@ import {
   KUN_DOC_CATEGORY_MAP
 } from '~/constants/doc'
 
-const { data: articleResponse } = await useFetch('/api/doc/article', {
-  query: {
-    page: 1,
-    limit: 24,
-    orderBy: 'published_time',
-    sortOrder: 'desc'
+const { data: articleResponse } = await useKunFetch<DocArticleListResponse>(
+  '/doc/article',
+  {
+    query: {
+      page: 1,
+      limit: 24,
+      orderBy: 'published_time',
+      sortOrder: 'desc'
+    }
   }
-})
+)
 
 const articles = computed(() => articleResponse.value?.articles || [])
 </script>

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import { KUN_TOPIC_SECTION } from '~/constants/topic'
 import type {
   DiscussionForumPosting,
@@ -19,12 +18,14 @@ const topicId = computed(() => {
 })
 provide<number>('topicId', topicId.value)
 
-const { data } = await useFetch(`/api/topic/${topicId.value}`, {
-  method: 'GET',
-  watch: false,
-  query: { topicId: topicId.value },
-  ...kungalgameResponseHandler
-})
+const { data } = await useKunFetch<TopicDetail>(
+  `/topic/${topicId.value}`,
+  {
+    method: 'GET',
+    watch: false,
+    query: { topicId: topicId.value }
+  }
+)
 
 onBeforeRouteLeave(async (_, __, next) => {
   if (isReplyRewriting.value) {
@@ -168,12 +169,12 @@ if (data.value && data.value !== 'banned') {
 
 <template>
   <div>
-    <TopicDetail v-if="data && data !== 'banned'" :topic="data" />
+    <TopicDetail v-if="data && data.status !== 1" :topic="data" />
 
-    <KunNull v-if="!data && data !== 'banned'" description="未找到这个话题" />
+    <KunNull v-if="!data" description="未找到这个话题" />
 
     <KunNull
-      v-if="data === 'banned'"
+      v-if="data && data.status === 1"
       description="话题被隐藏, 或您未开启网站 NSFW 模式"
     />
   </div>

@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import { checkSendCode, checkResetEmail } from '../utils/check'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const hasSentCodeEmail = ref('')
 
-const { data, refresh } = await useFetch('/api/user/email', {
-  method: 'GET',
-  ...kungalgameResponseHandler
-})
+const { data, refresh } = await useKunFetch<string>('/user/email')
 
 const input = reactive({
   codeSalt: '',
@@ -23,13 +19,12 @@ const handleSendCode = async () => {
   hasSentCodeEmail.value = input.newEmail
   useMessage(10118, 'info')
 
-  const result = await $fetch('/api/auth/email/code/reset', {
+  const result = await kunFetch<string>('/auth/email/code/reset', {
     method: 'POST',
-    body: { email: input.newEmail },
-    ...kungalgameResponseHandler
+    body: { email: input.newEmail }
   })
 
-  if (result.length === 64) {
+  if (result && result.length === 64) {
     input.codeSalt = result
     useMessage(10119, 'success')
   }
@@ -40,10 +35,9 @@ const handleResetEmail = async () => {
     return
   }
 
-  const result = await $fetch('/api/user/email', {
+  const result = await kunFetch('/user/email', {
     method: 'PUT',
-    body: { codeSalt: input.codeSalt, email: input.newEmail, code: input.code },
-    ...kungalgameResponseHandler
+    body: { codeSalt: input.codeSalt, email: input.newEmail, code: input.code }
   })
 
   if (result) {

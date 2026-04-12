@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   metadata: DocArticleDetail
 }>()
@@ -34,12 +32,11 @@ const handleDelete = async () => {
 
   isDeleting.value = true
   try {
-    await $fetch('/api/doc/article', {
+    await kunFetch('/doc/article', {
       method: 'DELETE',
       params: {
         articleId: metadata.value.id
-      },
-      ...kungalgameResponseHandler
+      }
     })
     useMessage('删除文档成功', 'success')
     await navigateTo('/doc')

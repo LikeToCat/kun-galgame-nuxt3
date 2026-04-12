@@ -3,7 +3,6 @@ import {
   KUN_TODO_TYPE_MAP,
   KUN_UPDATE_LOG_STATUS_MAP
 } from '~/constants/update'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { UpdateTodoPayload } from './types'
 
 const { role } = usePersistUserStore()
@@ -28,11 +27,10 @@ const pageData = ref({
   language: 'zh-cn'
 })
 
-const { data, status, refresh } = await useFetch(`/api/update/todo`, {
-  method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
-})
+const { data, status, refresh } = await useKunFetch<UpdateTodoList>(
+  '/update/todo',
+  { query: pageData }
+)
 
 const showTodoModal = ref(false)
 const editingTodo = ref<UpdateTodoPayload>({} as UpdateTodoPayload)
@@ -52,11 +50,9 @@ const openEditTodoModal = (log: UpdateTodo) => {
 }
 
 const handleTodoAction = async (data: UpdateTodoPayload) => {
-  const result = await $fetch(`/api/update/todo`, {
+  const result = await kunFetch('/update/todo', {
     method: data.todoId ? 'PUT' : 'POST',
-    watch: false,
-    body: data,
-    ...kungalgameResponseHandler
+    body: data
   })
 
   if (result) {

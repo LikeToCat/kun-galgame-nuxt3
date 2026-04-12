@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   reply: TopicReply
 }>()
@@ -20,12 +18,13 @@ const handleUpdateTopicBestAnswer = async () => {
     return
   }
 
-  const result = await $fetch(`/api/topic/${props.reply.topicId}/best-answer`, {
-    method: 'PUT',
-    watch: false,
-    body: { topicId: props.reply.topicId, replyId: props.reply.id },
-    ...kungalgameResponseHandler
-  })
+  const result = await kunFetch<string>(
+    `/topic/${props.reply.topicId}/best-answer`,
+    {
+      method: 'PUT',
+      body: { topicId: props.reply.topicId, replyId: props.reply.id }
+    }
+  )
 
   if (result) {
     useMessage(

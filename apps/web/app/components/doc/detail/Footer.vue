@@ -1,14 +1,17 @@
 <script setup lang="ts">
 const route = useRoute()
 
-const { data: articleResponse } = await useFetch('/api/doc/article', {
-  query: {
-    page: 1,
-    limit: 100,
-    orderBy: 'published_time',
-    sortOrder: 'desc'
+const { data: articleResponse } = await useKunFetch<DocArticleListResponse>(
+  '/doc/article',
+  {
+    query: {
+      page: 1,
+      limit: 100,
+      orderBy: 'published_time',
+      sortOrder: 'desc'
+    }
   }
-})
+)
 
 const articles = computed(() => articleResponse.value?.articles || [])
 

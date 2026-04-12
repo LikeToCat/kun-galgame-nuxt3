@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   topicId?: number
   targetUserId: number
@@ -21,12 +19,13 @@ const upvoteTopic = async () => {
     return
   }
 
-  const result = await $fetch(`/api/topic/${props.topicId}/upvote`, {
-    method: 'PUT',
-    watch: false,
-    body: { topicId: props.topicId },
-    ...kungalgameResponseHandler
-  })
+  const result = await kunFetch<string>(
+    `/topic/${props.topicId}/upvote`,
+    {
+      method: 'PUT',
+      body: { topicId: props.topicId }
+    }
+  )
 
   if (result) {
     upvoteCount.value++

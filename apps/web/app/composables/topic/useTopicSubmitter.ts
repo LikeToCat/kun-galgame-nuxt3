@@ -1,6 +1,5 @@
 import { createTopicSchema } from '~/validations/topic'
 import { useTopicEditorStore } from './useTopicEditorStore'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import {
   TOPIC_SECTION_CONSUME_MOEMOEPOINTS,
   MOEMOEPOINT_COST_FOR_CONSUME_SECTION
@@ -77,21 +76,17 @@ export const useTopicSubmitter = () => {
     isSubmitting.value = true
     if (isRewriteMode.value) {
       const topicId = tempStore.id
-      await $fetch(`/api/topic/${topicId}`, {
+      await kunFetch<string>(`/topic/${topicId}`, {
         method: 'PUT',
-        body: submitData,
-        watch: false,
-        ...kungalgameResponseHandler
+        body: submitData
       })
       useKunLoliInfo('重新编辑成功', 5)
       tempStore.resetRewriteTopicData()
       await navigateTo(`/topic/${topicId}`)
     } else {
-      const tid = await $fetch('/api/topic', {
+      const tid = await kunFetch<number>('/topic', {
         method: 'POST',
-        body: submitData,
-        watch: false,
-        ...kungalgameResponseHandler
+        body: submitData
       })
       if (tid) {
         useKunLoliInfo('发布成功', 5)

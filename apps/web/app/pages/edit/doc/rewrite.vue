@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 definePageMeta({
   middleware: 'auth'
 })
@@ -12,12 +10,8 @@ if (!slug.value) {
   await navigateTo('/doc')
 }
 
-const { data: article } = await useFetch<DocArticleDetail>(
-  `/api/doc/article/${slug.value}`,
-  {
-    method: 'GET',
-    ...kungalgameResponseHandler
-  }
+const { data: article } = await useKunFetch<DocArticleDetail>(
+  `/doc/article/${slug.value}`
 )
 
 useKunSeoMeta({ title: '重新编辑文档' })

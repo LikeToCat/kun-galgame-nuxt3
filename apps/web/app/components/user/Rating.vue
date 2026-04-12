@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   uid: number
 }>()
@@ -11,11 +9,10 @@ const pageData = reactive({
   userId: props.uid
 })
 
-const { data, status } = await useFetch(`/api/user/${props.uid}/ratings`, {
-  method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
-})
+const { data, status } = await useKunFetch<{
+  ratingData: GalgameRatingCard[]
+  totalCount: number
+}>(`/user/${props.uid}/ratings`, { query: pageData })
 </script>
 
 <template>

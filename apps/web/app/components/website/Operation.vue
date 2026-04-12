@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { CreateWebsitePayload, UpdateWebsitePayload } from './modal/types'
 
 const props = defineProps<{
@@ -31,11 +30,9 @@ const editingWebsite = ref<WebsiteData>(undefined)
 
 const toggleLike = () =>
   handleAction('like', async () => {
-    const result = await $fetch(`/api/website/${props.website.id}/like`, {
+    const result = await kunFetch(`/website/${props.website.id}/like`, {
       method: 'PUT',
-      watch: false,
-      body: { websiteId: props.website.id },
-      ...kungalgameResponseHandler
+      body: { websiteId: props.website.id }
     })
 
     if (result) {
@@ -47,11 +44,9 @@ const toggleLike = () =>
 
 const toggleFavorite = () =>
   handleAction('favorite', async () => {
-    const result = await $fetch(`/api/website/${props.website.id}/favorite`, {
+    const result = await kunFetch(`/website/${props.website.id}/favorite`, {
       method: 'PUT',
-      watch: false,
-      body: { websiteId: props.website.id },
-      ...kungalgameResponseHandler
+      body: { websiteId: props.website.id }
     })
 
     if (result) {
@@ -81,11 +76,9 @@ const handleOpenUpdateModal = () => {
 
 const handleUpdate = (data: CreateWebsitePayload | UpdateWebsitePayload) =>
   handleAction('update', async () => {
-    const result = await $fetch(`/api/website/${props.website.id}`, {
+    const result = await kunFetch(`/website/${props.website.id}`, {
       method: 'PUT',
-      watch: false,
-      body: data,
-      ...kungalgameResponseHandler
+      body: data
     })
 
     if (result) {
@@ -104,11 +97,9 @@ const handleDelete = () =>
       return
     }
 
-    const result = await $fetch(`/api/website/${props.website.id}`, {
+    const result = await kunFetch(`/website/${props.website.id}`, {
       method: 'DELETE',
-      watch: false,
-      query: { websiteId: props.website.id },
-      ...kungalgameResponseHandler
+      query: { websiteId: props.website.id }
     })
 
     if (result) {

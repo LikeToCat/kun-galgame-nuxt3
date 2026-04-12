@@ -1,12 +1,9 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 useKunDisableSeo('网站设置')
 
-const { data } = await useFetch('/api/admin/setting/register', {
-  method: 'GET',
-  ...kungalgameResponseHandler
-})
+const { data } = await useKunFetch<{ registerStatus: boolean }>(
+  '/admin/setting/register'
+)
 
 const registerStatus = ref(data.value ? !data.value.registerStatus : true)
 
@@ -21,10 +18,7 @@ const handleUpdateRegisterStatus = async () => {
     return
   }
 
-  await $fetch('/api/admin/setting/register', {
-    method: 'PUT',
-    ...kungalgameResponseHandler
-  })
+  await kunFetch('/admin/setting/register', { method: 'PUT' })
 
   registerStatus.value = !registerStatus.value
 }

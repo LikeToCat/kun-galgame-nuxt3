@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   topicId?: number
   replyId?: number
@@ -16,20 +14,22 @@ const likeCount = ref(props.likeCount)
 const toggleLike = async () => {
   let res = ''
   if (props.topicId) {
-    const result = await $fetch(`/api/topic/${props.topicId}/like`, {
-      method: 'PUT',
-      watch: false,
-      body: { topicId: props.topicId },
-      ...kungalgameResponseHandler
-    })
+    const result = await kunFetch<string>(
+      `/topic/${props.topicId}/like`,
+      {
+        method: 'PUT',
+        body: { topicId: props.topicId }
+      }
+    )
     res = result ?? ''
   } else {
-    const result = await $fetch(`/api/topic/${props.topicId}/reply/like`, {
-      method: 'PUT',
-      body: { replyId: props.replyId },
-      watch: false,
-      ...kungalgameResponseHandler
-    })
+    const result = await kunFetch<string>(
+      `/topic/${props.topicId}/reply/like`,
+      {
+        method: 'PUT',
+        body: { replyId: props.replyId }
+      }
+    )
     res = result ?? ''
   }
 

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   modelValue: boolean
   pollId: number
@@ -24,13 +22,17 @@ const isLoading = ref(false)
 const fetchLogs = async () => {
   if (!props.pollId) return
   isLoading.value = true
-  const res = await $fetch(`/api/topic/${props.topicId}/poll/log`, {
-    query: pageData,
-    ...kungalgameResponseHandler
+  const res = await kunFetch<{
+    logs: TopicPollVoteLog[]
+    totalCount: number
+  }>(`/topic/${props.topicId}/poll/log`, {
+    query: pageData
   })
   isLoading.value = false
-  logs.value = res.logs
-  totalCount.value = res.totalCount
+  if (res) {
+    logs.value = res.logs
+    totalCount.value = res.totalCount
+  }
 }
 
 watch(

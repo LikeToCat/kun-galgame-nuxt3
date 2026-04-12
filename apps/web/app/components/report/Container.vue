@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { kunReportOptions, KUN_REPORT_SECTION_MAP } from '~/constants/report'
 import { usePersistUserStore } from '~/store/modules/user'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const reason = ref('')
 const selectReportType = ref('topic')
@@ -25,14 +24,12 @@ const handleSubmitReport = async () => {
   }
 
   isFetching.value = true
-  const result = await $fetch(`/api/report/submit`, {
+  const result = await kunFetch('/report/submit', {
     method: 'POST',
     body: {
       type: selectReportType.value,
       reason: reason.value
-    },
-    watch: false,
-    ...kungalgameResponseHandler
+    }
   })
   isFetching.value = false
 

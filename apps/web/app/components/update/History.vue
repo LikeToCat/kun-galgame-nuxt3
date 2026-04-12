@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { KUN_UPDATE_LOG_TYPE_MAP } from '~/constants/update'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { UpdateUpdateLogPayload } from './types'
 
 const pageData = ref({
@@ -11,11 +10,10 @@ const pageData = ref({
 
 const { role } = usePersistUserStore()
 
-const { data, status, refresh } = await useFetch('/api/update/history', {
-  method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
-})
+const { data, status, refresh } = await useKunFetch<UpdateHistoryList>(
+  '/update/history',
+  { query: pageData }
+)
 
 const showUpdateLogModal = ref(false)
 const editingUpdateLog = ref<UpdateUpdateLogPayload>(
@@ -37,11 +35,9 @@ const openEditUpdateLogModal = (log: UpdateLog) => {
 }
 
 const handleUpdateLogAction = async (data: UpdateUpdateLogPayload) => {
-  const result = await $fetch(`/api/update/history`, {
+  const result = await kunFetch('/update/history', {
     method: data.updateLogId ? 'PUT' : 'POST',
-    watch: false,
-    body: data,
-    ...kungalgameResponseHandler
+    body: data
   })
 
   if (result) {

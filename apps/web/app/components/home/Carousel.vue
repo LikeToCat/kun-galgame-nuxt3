@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { useMouseInElement } from '@vueuse/core'
 
-const { data: pinnedResponse } = await useFetch('/api/doc/article', {
-  query: {
-    page: 1,
-    limit: 10,
-    isPin: true,
-    orderBy: 'view',
-    sortOrder: 'desc'
+const { data: pinnedResponse } = await useKunFetch<DocArticleListResponse>(
+  '/doc/article',
+  {
+    query: {
+      page: 1,
+      limit: 10,
+      isPin: true,
+      orderBy: 'view',
+      sortOrder: 'desc'
+    }
   }
-})
+)
 
 const pinnedPosts = computed(() => pinnedResponse.value?.articles || [])
 

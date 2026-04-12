@@ -1,17 +1,14 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const route = useRoute()
 
 const uid = computed(() => {
   return parseInt((route.params as { uid: string }).uid)
 })
 
-const { data } = await useFetch(`/api/user/${uid.value}`, {
-  method: 'GET',
-  query: { userId: uid },
-  ...kungalgameResponseHandler
-})
+const { data } = await useKunFetch<UserInfo | 'banned'>(
+  `/user/${uid.value}`,
+  { query: { userId: uid } }
+)
 
 if (data.value === 'banned') {
   useHead({

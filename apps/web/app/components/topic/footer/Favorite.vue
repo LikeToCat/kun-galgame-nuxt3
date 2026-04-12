@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   topicId: number
   favoriteCount: number
@@ -12,12 +10,13 @@ const isFavorite = ref(id && props.isFavorite)
 const favoriteCount = ref(props.favoriteCount)
 
 const toggleFavoriteGalgame = async () => {
-  const result = await $fetch(`/api/topic/${props.topicId}/favorite`, {
-    method: 'PUT',
-    watch: false,
-    body: { topicId: props.topicId },
-    ...kungalgameResponseHandler
-  })
+  const result = await kunFetch<string>(
+    `/topic/${props.topicId}/favorite`,
+    {
+      method: 'PUT',
+      body: { topicId: props.topicId }
+    }
+  )
 
   if (result) {
     favoriteCount.value += isFavorite.value ? -1 : 1

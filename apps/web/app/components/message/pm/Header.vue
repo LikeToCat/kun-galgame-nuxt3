@@ -1,22 +1,22 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   id: number
 }>()
 
 // const socket = useSocketIO()
 
-const res = await $fetch(`/api/user/${props.id}`, {
-  method: 'GET',
-  query: { userId: props.id },
-  ...kungalgameResponseHandler
-})
+const res = await kunFetch<{ name: string; avatar: string }>(
+  `/user/${props.id}`,
+  {
+    method: 'GET',
+    query: { userId: props.id }
+  }
+)
 
 const user = {
   id: props.id,
-  name: typeof res !== 'string' ? res.name : '',
-  avatar: typeof res !== 'string' ? res.avatar : ''
+  name: res ? res.name : '',
+  avatar: res ? res.avatar : ''
 }
 
 // const handleReload = () => location.reload()

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const message = useComponentMessageStore()
 
 const inputValue = ref('')
@@ -17,11 +15,9 @@ const handleChangeUsername = async () => {
   }
 
   useMessage(10123, 'info')
-  const result = await $fetch('/api/user/username', {
+  const result = await kunFetch('/user/username', {
     method: 'PUT',
-    watch: false,
-    body: { username: inputValue.value },
-    ...kungalgameResponseHandler
+    body: { username: inputValue.value }
   })
 
   if (result) {

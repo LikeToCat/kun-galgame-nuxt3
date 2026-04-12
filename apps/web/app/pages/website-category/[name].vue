@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { UpdateWebsiteCategoryPayload } from '~/components/website/modal/types'
 
 const route = useRoute()
@@ -12,12 +11,13 @@ const editingCategory = ref<UpdateWebsiteCategoryPayload>(
   {} as UpdateWebsiteCategoryPayload
 )
 
-const { data } = await useFetch(`/api/website-category/${categoryName.value}`, {
-  method: 'GET',
-  watch: false,
-  query: { name: categoryName.value },
-  ...kungalgameResponseHandler
-})
+const { data } = await useKunFetch<WebsiteCategoryDetail>(
+  `/website-category/${categoryName.value}`,
+  {
+    watch: false,
+    query: { name: categoryName.value }
+  }
+)
 
 const openEditCategoryModal = () => {
   if (!data.value) {
@@ -33,11 +33,9 @@ const openEditCategoryModal = () => {
 }
 
 const handleUpdateCategory = async (data: UpdateWebsiteCategoryPayload) => {
-  const result = await $fetch(`/api/website-category`, {
+  const result = await kunFetch(`/website-category`, {
     method: 'PUT',
-    watch: false,
-    body: data,
-    ...kungalgameResponseHandler
+    body: data
   })
 
   if (result) {

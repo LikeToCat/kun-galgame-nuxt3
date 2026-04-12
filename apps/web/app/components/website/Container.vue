@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { KUN_WEBSITE_CATEGORY_MAP } from '~/constants/galgameWebsite'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type {
   CreateWebsitePayload,
   UpdateWebsitePayload
 } from '~/components/website/modal/types'
 
-const { data } = await useFetch('/api/website', {
-  method: 'GET',
-  ...kungalgameResponseHandler
-})
+const { data } = await useKunFetch<WebsiteCard[]>('/website')
 
 const { role } = usePersistUserStore()
 const searchQuery = ref('')
@@ -76,11 +72,9 @@ const openCreateWebsiteModal = () => {
 const handleCreateWebsite = async (
   data: CreateWebsitePayload | UpdateWebsitePayload
 ) => {
-  const result = await $fetch('/api/website', {
+  const result = await kunFetch('/website', {
     method: 'POST',
-    watch: false,
-    body: data,
-    ...kungalgameResponseHandler
+    body: data
   })
 
   if (result) {

@@ -5,12 +5,8 @@ const docSlug = computed(() => (route.params.slug as string) || '')
 
 const { images, isLightboxOpen, currentImageIndex } = useKunLightbox()
 
-const { data } = await useFetch<DocArticleDetail>(
-  `/api/doc/article/${docSlug.value}`,
-  {
-    method: 'GET',
-    ...kungalgameResponseHandler
-  }
+const { data } = await useKunFetch<DocArticleDetail>(
+  `/doc/article/${docSlug.value}`
 )
 
 useKunSeoMeta({

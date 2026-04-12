@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import {
   kunUserTopicNavItem,
   type KUN_USER_PAGE_TOPIC_TYPE
@@ -18,11 +17,10 @@ const pageData = reactive({
   userId: props.uid
 })
 
-const { data, status } = await useFetch(`/api/user/${props.uid}/topics`, {
-  method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
-})
+const { data, status } = await useKunFetch<{
+  topics: UserTopic[]
+  totalCount: number
+}>(`/user/${props.uid}/topics`, { query: pageData })
 
 const handleUpdateTopicHideStatus = async (topicId: number) => {
   const res = await useComponentMessageStore().alert(
@@ -32,11 +30,9 @@ const handleUpdateTopicHideStatus = async (topicId: number) => {
     return
   }
 
-  const result = await $fetch(`/api/topic/${topicId}/hide`, {
+  const result = await kunFetch<string>(`/topic/${topicId}/hide`, {
     method: 'PUT',
-    watch: false,
-    body: { topicId },
-    ...kungalgameResponseHandler
+    body: { topicId }
   })
 
   if (result) {

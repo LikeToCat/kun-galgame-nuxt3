@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { watchDebounced } from '@vueuse/core'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 useKunDisableSeo('用户管理')
 
@@ -9,10 +8,8 @@ const pageData = reactive({
   limit: 100
 })
 
-const { data, status } = await useFetch('/api/admin/user', {
-  method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
+const { data, status } = await useKunFetch<AdminUserList>('/admin/user', {
+  query: pageData
 })
 
 const searchResult = ref<AdminUser[]>([])
@@ -32,13 +29,13 @@ const handleSearch = async () => {
     return
   }
   isSearching.value = true
-  const res = await $fetch(`/api/admin/user/search`, {
+  const res = await kunFetch<AdminUser[]>('/admin/user/search', {
     method: 'GET',
     query: { q: searchQuery.value.split(' ') }
   })
   isSearching.value = false
 
-  searchResult.value = res
+  searchResult.value = res ?? []
 }
 
 watchDebounced(

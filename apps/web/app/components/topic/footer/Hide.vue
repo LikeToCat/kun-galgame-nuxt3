@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   topicId: number
 }>()
@@ -18,12 +16,13 @@ const handleUpdateTopicHideStatus = async () => {
     return
   }
 
-  const result = await $fetch(`/api/topic/${props.topicId}/hide`, {
-    method: 'PUT',
-    watch: false,
-    body: { topicId: props.topicId },
-    ...kungalgameResponseHandler
-  })
+  const result = await kunFetch<string>(
+    `/topic/${props.topicId}/hide`,
+    {
+      method: 'PUT',
+      body: { topicId: props.topicId }
+    }
+  )
 
   if (result) {
     useMessage('隐藏话题成功', 'success')

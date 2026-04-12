@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   replyId: number
   targetUser: KunUser
@@ -28,17 +26,18 @@ const handlePublishComment = async () => {
   }
 
   isPublishing.value = true
-  const comment = await $fetch(`/api/topic/${topicId}/comment`, {
-    method: 'POST',
-    body: {
-      topicId: topicId,
-      replyId: props.replyId,
-      targetUserId: props.targetUser.id,
-      content: commentValue.value
-    },
-    watch: false,
-    ...kungalgameResponseHandler
-  })
+  const comment = await kunFetch<TopicComment>(
+    `/topic/${topicId}/comment`,
+    {
+      method: 'POST',
+      body: {
+        topicId: topicId,
+        replyId: props.replyId,
+        targetUserId: props.targetUser.id,
+        content: commentValue.value
+      }
+    }
+  )
   isPublishing.value = false
 
   if (comment) {

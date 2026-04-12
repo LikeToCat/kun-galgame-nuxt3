@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { checkChangePassword } from '../utils/check'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const input = reactive({
   oldPassword: '',
@@ -24,10 +23,9 @@ const handleChangePassword = async () => {
     return
   }
 
-  const result = await $fetch('/api/user/password', {
+  const result = await kunFetch('/user/password', {
     method: 'PUT',
-    body: { oldPassword: input.oldPassword, newPassword: input.newPassword },
-    ...kungalgameResponseHandler
+    body: { oldPassword: input.oldPassword, newPassword: input.newPassword }
   })
 
   if (result) {

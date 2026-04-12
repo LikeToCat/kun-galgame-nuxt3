@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const { id, name, moemoepoint, isCheckIn } = storeToRefs(usePersistUserStore())
 const { messageStatus } = storeToRefs(useTempSettingStore())
 
@@ -9,11 +7,13 @@ const isShowMessageDot = computed(() => messageStatus.value === 'new')
 const handleCheckIn = async () => {
   isCheckIn.value = true
 
-  const result = await $fetch(`/api/user/check-in`, {
-    method: 'POST',
-    watch: false,
-    ...kungalgameResponseHandler
+  const result = await kunFetch<number>('/user/check-in', {
+    method: 'POST'
   })
+
+  if (result === null) {
+    return
+  }
 
   moemoepoint.value += result
 

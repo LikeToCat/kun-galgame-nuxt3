@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import { KUN_WEBSITE_CATEGORY_MAP } from '~/constants/galgameWebsite'
 import type {
   Article,
@@ -16,12 +15,13 @@ const domain = computed(() => {
   return (route.params as { domain: string }).domain
 })
 
-const { data, refresh } = await useFetch(`/api/website/${domain.value}`, {
-  method: 'GET',
-  watch: false,
-  query: { domain: domain.value },
-  ...kungalgameResponseHandler
-})
+const { data, refresh } = await useKunFetch<WebsiteDetail>(
+  `/website/${domain.value}`,
+  {
+    watch: false,
+    query: { domain: domain.value }
+  }
+)
 
 const jsonLd = computed<WithContext<Article> | null>(() => {
   if (!data.value) {

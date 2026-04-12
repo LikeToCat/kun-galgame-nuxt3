@@ -31,10 +31,17 @@ const loadQuotedReply = async (
 
   isLoadingReply.value = targetReplyId
 
-  const reply = await $fetch(`/api/topic/${props.topicId}/reply/detail`, {
-    method: 'GET',
-    query: { replyId: targetReplyId }
-  })
+  const reply = await kunFetch<TopicReply>(
+    `/topic/${props.topicId}/reply/detail`,
+    {
+      method: 'GET',
+      query: { replyId: targetReplyId }
+    }
+  )
+  if (!reply) {
+    isLoadingReply.value = null
+    return
+  }
 
   const anchorIndex = replies.value.findIndex((r) => r.id === anchorReplyId)
   if (anchorIndex !== -1) {

@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import { asideItems } from './asideItemStore'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const routeName = computed(() => useRoute().name)
 
-const { data: system } = await useFetch(`/api/message/nav/system`, {
-  method: 'GET',
-  ...kungalgameResponseHandler
-})
+const { data: system } = await useKunFetch<MessageNavSystem[]>(
+  '/message/nav/system'
+)
 
-const { data: contact } = await useFetch(`/api/message/nav/contact`, {
-  method: 'GET',
-  ...kungalgameResponseHandler
-})
+const { data: contact } = await useKunFetch<MessageNavContact[]>(
+  '/message/nav/contact'
+)
 
 asideItems.value = contact.value ? contact.value : []
 </script>

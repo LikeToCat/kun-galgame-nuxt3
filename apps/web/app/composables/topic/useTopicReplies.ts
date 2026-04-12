@@ -1,4 +1,3 @@
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { Ref } from 'vue'
 
 export const useTopicReplies = (topicId: number | Ref<number>) => {
@@ -27,17 +26,19 @@ export const useTopicReplies = (topicId: number | Ref<number>) => {
   ) => {
     status.value = 'pending'
 
-    const newReplies = await $fetch(`/api/topic/${_topicId}/reply`, {
-      query: {
-        topicId: _topicId,
-        page: fetchPage,
-        limit: 30,
-        sortOrder: fetchSortOrder
-      },
-      ...kungalgameResponseHandler
-    })
+    const newReplies = await kunFetch<TopicReply[]>(
+      `/topic/${_topicId}/reply`,
+      {
+        query: {
+          topicId: _topicId,
+          page: fetchPage,
+          limit: 30,
+          sortOrder: fetchSortOrder
+        }
+      }
+    )
     status.value = 'success'
-    return newReplies
+    return newReplies ?? []
   }
 
   const loadInitialReplies = async () => {

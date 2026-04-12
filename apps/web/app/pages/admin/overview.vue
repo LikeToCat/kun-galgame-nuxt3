@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { watchDebounced } from '@vueuse/core'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import {
   type StatsModelType,
   KUN_ADMIN_OVERVIEW_STATS_MODEL_MAP
@@ -22,15 +21,12 @@ watchDebounced(
   { debounce: 300, maxWait: 1000 }
 )
 
-const { data: allStats } = await useFetch('/api/admin/overview/all', {
-  method: 'GET',
-  ...kungalgameResponseHandler
-})
+const { data: allStats } = await useKunFetch<AdminOverviewAll[]>(
+  '/admin/overview/all'
+)
 
-const { data } = await useFetch<StatDay[]>('/api/admin/overview/stats', {
-  method: 'GET',
-  query: { days: debouncedDays },
-  ...kungalgameResponseHandler
+const { data } = await useKunFetch<StatDay[]>('/admin/overview/stats', {
+  query: { days: debouncedDays }
 })
 
 const totalStats = computed(() => {
