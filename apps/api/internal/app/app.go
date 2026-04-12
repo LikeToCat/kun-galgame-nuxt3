@@ -8,6 +8,7 @@ import (
 	docHandler "kun-galgame-api/internal/doc/handler"
 	galgameClient "kun-galgame-api/internal/galgame/client"
 	galgameHandler "kun-galgame-api/internal/galgame/handler"
+	cronPkg "kun-galgame-api/internal/infrastructure/cron"
 	"kun-galgame-api/internal/infrastructure/cache"
 	"kun-galgame-api/internal/infrastructure/database"
 	"kun-galgame-api/internal/infrastructure/mail"
@@ -53,9 +54,13 @@ type App struct {
 	SectionHandler *common.SectionHandler
 	DocHandler     *docHandler.DocHandler
 	WebsiteHandler *websiteHandler.WebsiteHandler
-	UpdateHandler   *common.UpdateHandler
-	MiscHandler     *common.MiscHandler
-	GalgameHandler  *galgameHandler.GalgameHandler
+	UpdateHandler    *common.UpdateHandler
+	MiscHandler      *common.MiscHandler
+	GalgameHandler   *galgameHandler.GalgameHandler
+	ActivityHandler  *common.ActivityHandler
+	ImageHandler     *common.ImageHandler
+	SearchHandler    *common.SearchHandler
+	CronStop         func()
 }
 
 func New(cfg *config.Config) *App {
@@ -98,9 +103,13 @@ func New(cfg *config.Config) *App {
 		SectionHandler: common.NewSectionHandler(db),
 		DocHandler:     docHandler.NewDocHandler(db),
 		WebsiteHandler: websiteHandler.NewWebsiteHandler(db),
-		UpdateHandler:   common.NewUpdateHandler(db),
-		MiscHandler:     common.NewMiscHandler(db),
-		GalgameHandler:  galgameHandler.NewGalgameHandler(db, galgameClient.NewGalgameClient(cfg.GalgameWiki.BaseURL)),
+		UpdateHandler:    common.NewUpdateHandler(db),
+		MiscHandler:      common.NewMiscHandler(db),
+		GalgameHandler:   galgameHandler.NewGalgameHandler(db, galgameClient.NewGalgameClient(cfg.GalgameWiki.BaseURL)),
+		ActivityHandler:  common.NewActivityHandler(db),
+		ImageHandler:     common.NewImageHandler(db, s3Client),
+		SearchHandler:    common.NewSearchHandler(db),
+		CronStop:         cronPkg.Start(db, rdb),
 	}
 
 	// Fiber

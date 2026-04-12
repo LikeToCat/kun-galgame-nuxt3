@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { KUN_ACTIVITY_TYPE_TYPE } from '~/constants/activity'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const activityPageTabs = Object.entries(KUN_ACTIVITY_TYPE_TYPE).map(
   ([key, value]) => ({
@@ -15,10 +14,9 @@ const pageData = reactive({
   type: 'TOPIC_CREATION'
 })
 
-const { data, status } = await useFetch('/api/activity', {
+const { data, status } = await useKunFetch('/activity', {
   method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
+  query: pageData
 })
 </script>
 

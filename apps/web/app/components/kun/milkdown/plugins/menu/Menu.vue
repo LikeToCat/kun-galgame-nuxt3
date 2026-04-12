@@ -3,7 +3,6 @@ import { callCommand } from '@milkdown/kit/utils'
 import { insertImageCommand } from '@milkdown/kit/preset/commonmark'
 import { commands } from './_buttonList'
 import { tabs, activeTab } from '../../atom'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { UseEditorReturn } from '@milkdown/vue'
 import type { CmdKey } from '@milkdown/kit/core'
 
@@ -34,11 +33,10 @@ const handleFileChange = async (event: Event) => {
   formData.append('image', file)
 
   useMessage(10107, 'info')
-  const result = await $fetch('/api/image/topic', {
+  const result = await kunFetch<string>('/image/topic', {
     method: 'POST',
     body: formData,
-    watch: false,
-    ...kungalgameResponseHandler
+    watch: false
   })
 
   if (result) {

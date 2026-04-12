@@ -14,7 +14,7 @@ const pageData = reactive({
 
 const searchQuery = async () => {
   isLoading.value = true
-  const result = await $fetch('/api/search', {
+  const result = await kunFetch<SearchResult[]>('/search', {
     method: 'GET',
     query: { keywords: keywords.value, ...pageData }
   })

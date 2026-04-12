@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { KUN_ACTIVITY_TYPE_TYPE } from '~/constants/activity'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const pageData = reactive({
   page: 1,
   limit: 50
 })
 
-const { data, status } = await useFetch('/api/activity/timeline', {
+const { data, status } = await useKunFetch('/activity/timeline', {
   method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
+  query: pageData
 })
 </script>
 

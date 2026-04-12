@@ -159,6 +159,16 @@ func (a *App) setupRoutes() {
 	authed.Post("/report/submit", a.MiscHandler.SubmitReport)
 	api.Get("/rss/topic", a.MiscHandler.GetTopicRSS)
 
+	// ── Activity routes (public) ──
+	api.Get("/activity", a.ActivityHandler.GetActivity)
+	api.Get("/activity/timeline", a.ActivityHandler.GetTimeline)
+
+	// ── Search route (public) ──
+	api.Get("/search", a.SearchHandler.Search)
+
+	// ── Image upload (authenticated) ──
+	authed.Post("/image/topic", a.ImageHandler.UploadTopicImage)
+
 	// ── Galgame routes ──
 	// Aggregation (wiki metadata + local interaction data)
 	optAuth.Get("/galgame/:gid", a.GalgameHandler.GetDetail)

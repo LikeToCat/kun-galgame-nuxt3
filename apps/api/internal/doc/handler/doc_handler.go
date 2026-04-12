@@ -53,11 +53,14 @@ func (h *DocHandler) GetArticles(c *fiber.Ctx) error {
 	var total int64
 
 	query := h.db.Model(&model.DocArticle{})
-	if req.CategoryID != nil {
-		query = query.Where("category_id = ?", *req.CategoryID)
-	}
+	// Default: only show published articles
 	if req.Status != nil {
 		query = query.Where("status = ?", *req.Status)
+	} else {
+		query = query.Where("status = 1")
+	}
+	if req.CategoryID != nil {
+		query = query.Where("category_id = ?", *req.CategoryID)
 	}
 	if req.IsPin != nil {
 		query = query.Where("is_pin = ?", *req.IsPin)

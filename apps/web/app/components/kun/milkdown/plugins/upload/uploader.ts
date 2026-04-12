@@ -1,5 +1,4 @@
 import { Decoration } from '@milkdown/prose/view'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { Uploader } from '@milkdown/plugin-upload'
 import type { Node } from '@milkdown/prose/model'
 
@@ -24,11 +23,10 @@ export const kunUploader: Uploader = async (files, schema) => {
       const formData = new FormData()
       formData.append('image', image)
 
-      const result = await $fetch('/api/image/topic', {
+      const result = await kunFetch<string>('/image/topic', {
         method: 'POST',
         body: formData,
-        watch: false,
-        ...kungalgameResponseHandler
+        watch: false
       })
 
       const alt = image.name
