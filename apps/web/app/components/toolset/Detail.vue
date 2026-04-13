@@ -6,7 +6,6 @@ import {
   KUN_GALGAME_TOOLSET_VERSION_MAP
 } from '~/constants/toolset'
 import { toolsetUpdateForm } from './rewriteStore'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const props = defineProps<{
   id: number
@@ -34,10 +33,9 @@ const handleDeleteToolset = async () => {
   }
 
   isDeleting.value = true
-  const ok = await $fetch(`/api/toolset/${data.value.id}`, {
+  const ok = await kunFetch(`/toolset/${data.value.id}`, {
     method: 'DELETE',
-    query: { toolsetId: data.value.id },
-    ...kungalgameResponseHandler
+    query: { toolsetId: data.value.id }
   })
   isDeleting.value = false
 
@@ -69,12 +67,13 @@ const isSubmittingRate = ref(false)
 const practicalityData = ref<ToolsetRating | null>(null)
 
 const loadPracticalityMine = async () => {
-  const res = await $fetch(`/api/toolset/${props.id}/practicality`, {
-    method: 'GET',
-    query: { toolsetId: props.id },
-    watch: false,
-    ...kungalgameResponseHandler
-  })
+  const res = await kunFetch<ToolsetRating>(
+    `/toolset/${props.id}/practicality`,
+    {
+      method: 'GET',
+      query: { toolsetId: props.id }
+    }
+  )
   if (res) {
     practicalityData.value = res
   }
@@ -88,11 +87,9 @@ const handleSetStar = async (val: number) => {
     return
   }
   isSubmittingRate.value = true
-  await $fetch(`/api/toolset/${props.id}/practicality`, {
+  await kunFetch(`/toolset/${props.id}/practicality`, {
     method: 'PUT',
-    body: { toolsetId: props.id, rate: val },
-    watch: false,
-    ...kungalgameResponseHandler
+    body: { toolsetId: props.id, rate: val }
   })
 
   useMessage(`已评分: ${val} 星`, 'success')

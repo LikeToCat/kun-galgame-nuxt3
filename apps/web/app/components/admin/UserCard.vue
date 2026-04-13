@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { KUN_USER_STATUS_MAP } from '~/constants/user'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const props = defineProps<{
   user: AdminUser
@@ -19,10 +18,8 @@ const handleDeleteUser = async () => {
 
   isLoading.value = true
 
-  await $fetch(`/api/user/${props.user.id}/permanent`, {
-    method: 'DELETE',
-    query: { userId: props.user.id },
-    ...kungalgameResponseHandler
+  await kunFetch(`/user/${props.user.id}`, {
+    method: 'DELETE'
   })
 
   isLoading.value = false
@@ -41,10 +38,9 @@ const handleBanUser = async () => {
 
   isLoading.value = true
 
-  await $fetch(`/api/user/${props.user.id}/ban`, {
+  await kunFetch(`/user/${props.user.id}/ban`, {
     method: 'PUT',
-    query: { userId: props.user.id },
-    ...kungalgameResponseHandler
+    body: { status: props.user.status ? 0 : 1 }
   })
   useMessage(`${props.user.status ? '解封' : '封禁'} 用户成功`, 'success')
 

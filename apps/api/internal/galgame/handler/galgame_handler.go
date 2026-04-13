@@ -261,36 +261,65 @@ func (h *GalgameHandler) GetComments(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	type commentRow struct {
-		ID             int    `json:"id"`
-		Content        string `json:"content"`
-		GalgameID      int    `json:"galgame_id"`
-		UserID         int    `json:"user_id"`
-		UserName       string `json:"userName"`
-		UserAvatar     string `json:"userAvatar"`
-		TargetUserID   *int   `json:"target_user_id"`
-		TargetUserName string `json:"targetUserName"`
-		LikeCount      int    `json:"like_count"`
-		CreatedAt      string `json:"created"`
+	type dbRow struct {
+		ID               int
+		Content          string
+		GalgameID        int
+		UserID           int
+		UserName         string
+		UserAvatar       string
+		TargetUserID     *int
+		TargetUserName   string
+		TargetUserAvatar string
+		LikeCount        int
+		CreatedAt        string
 	}
 
-	var comments []commentRow
+	var rows []dbRow
 	var total int64
 
 	h.db.Model(&model.GalgameComment{}).Where("galgame_id = ?", gid).Count(&total)
 	h.db.Table("galgame_comment gc").
 		Select(`gc.id, gc.content, gc.galgame_id, gc.user_id,
 			u1.name AS user_name, u1.avatar AS user_avatar,
-			gc.target_user_id, u2.name AS target_user_name,
+			gc.target_user_id, u2.name AS target_user_name, u2.avatar AS target_user_avatar,
 			gc.like_count, gc.created AS created_at`).
 		Joins(`LEFT JOIN "user" u1 ON u1.id = gc.user_id`).
 		Joins(`LEFT JOIN "user" u2 ON u2.id = gc.target_user_id`).
 		Where("gc.galgame_id = ?", gid).
 		Order("gc.created DESC").
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
-		Find(&comments)
+		Find(&rows)
 
-	return response.Paginated(c, comments, total)
+	type userObj struct {
+		ID     int    `json:"id"`
+		Name   string `json:"name"`
+		Avatar string `json:"avatar"`
+	}
+	type commentItem struct {
+		ID         int      `json:"id"`
+		Content    string   `json:"content"`
+		GalgameID  int      `json:"galgameId"`
+		User       userObj  `json:"user"`
+		TargetUser *userObj `json:"targetUser"`
+		LikeCount  int      `json:"likeCount"`
+		Created    string   `json:"created"`
+	}
+
+	items := make([]commentItem, len(rows))
+	for i, r := range rows {
+		item := commentItem{
+			ID: r.ID, Content: r.Content, GalgameID: r.GalgameID,
+			User:      userObj{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
+			LikeCount: r.LikeCount, Created: r.CreatedAt,
+		}
+		if r.TargetUserID != nil {
+			item.TargetUser = &userObj{ID: *r.TargetUserID, Name: r.TargetUserName, Avatar: r.TargetUserAvatar}
+		}
+		items[i] = item
+	}
+
+	return response.Paginated(c, items, total)
 }
 
 // CreateComment creates a galgame comment.
@@ -337,7 +366,37 @@ func (h *GalgameHandler) CreateComment(c *fiber.Ctx) error {
 		return nil
 	})
 
-	return response.OK(c, comment)
+	// Fetch creator info for response
+	var creatorName, creatorAvatar string
+	h.db.Table(`"user"`).Select("name, avatar").Where("id = ?", user.UID).Row().Scan(&creatorName, &creatorAvatar)
+
+	type userObj struct {
+		ID     int    `json:"id"`
+		Name   string `json:"name"`
+		Avatar string `json:"avatar"`
+	}
+	type commentResp struct {
+		ID         int      `json:"id"`
+		Content    string   `json:"content"`
+		GalgameID  int      `json:"galgameId"`
+		User       userObj  `json:"user"`
+		TargetUser *userObj `json:"targetUser"`
+		LikeCount  int      `json:"likeCount"`
+		Created    string   `json:"created"`
+	}
+
+	resp := commentResp{
+		ID: comment.ID, Content: comment.Content, GalgameID: comment.GalgameID,
+		User:      userObj{ID: user.UID, Name: creatorName, Avatar: creatorAvatar},
+		LikeCount: 0, Created: comment.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	if req.TargetUserID != nil {
+		var targetName, targetAvatar string
+		h.db.Table(`"user"`).Select("name, avatar").Where("id = ?", *req.TargetUserID).Row().Scan(&targetName, &targetAvatar)
+		resp.TargetUser = &userObj{ID: *req.TargetUserID, Name: targetName, Avatar: targetAvatar}
+	}
+
+	return response.OK(c, resp)
 }
 
 // DeleteComment deletes a galgame comment.

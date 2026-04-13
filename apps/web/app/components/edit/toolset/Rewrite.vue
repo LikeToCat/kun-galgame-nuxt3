@@ -7,7 +7,6 @@ import {
 } from '~/constants/toolset'
 import { toolsetUpdateForm } from '~/components/toolset/rewriteStore'
 import { updateToolsetSchema } from '~/validations/toolset'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const isSubmitting = ref(false)
 const aliasInput = ref('')
@@ -27,10 +26,9 @@ const handleSubmit = async () => {
   }
 
   isSubmitting.value = true
-  await $fetch(`/api/toolset/${toolsetUpdateForm.toolsetId}`, {
+  await kunFetch(`/toolset/${toolsetUpdateForm.toolsetId}`, {
     method: 'PUT',
-    body: toolsetUpdateForm,
-    ...kungalgameResponseHandler
+    body: toolsetUpdateForm
   })
   isSubmitting.value = false
 

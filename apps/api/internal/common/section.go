@@ -98,7 +98,7 @@ func (h *SectionHandler) GetSectionTopics(c *fiber.Ctx) error {
 // GET /api/category
 func (h *SectionHandler) GetCategories(c *fiber.Ctx) error {
 	type catStat struct {
-		Category   string `json:"category"`
+		Name       string `json:"name"`
 		TopicCount int64  `json:"topicCount"`
 		ViewCount  int64  `json:"viewCount"`
 	}
@@ -116,7 +116,7 @@ func (h *SectionHandler) GetCategories(c *fiber.Ctx) error {
 			Where("category = ? AND status != 1", cat).
 			Scan(&viewCount)
 		stats[i] = catStat{
-			Category:   cat,
+			Name:       cat,
 			TopicCount: topicCount,
 			ViewCount:  viewCount,
 		}

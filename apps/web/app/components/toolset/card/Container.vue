@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const pageData = storeToRefs(useTempToolsetStore())
 
-const { data, status } = await useFetch(`/api/toolset`, {
+const { data, status } = await useKunFetch<{
+  items: ToolsetCard[]
+  totalCount: number
+}>('/toolset', {
   method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
+  query: pageData
 })
 </script>
 

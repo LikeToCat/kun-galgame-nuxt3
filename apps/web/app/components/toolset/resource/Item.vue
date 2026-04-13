@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { updateToolsetResourceSchema } from '~/validations/toolset'
 import { KUN_GALGAME_TOOLSET_STORAGE_MAP } from '~/constants/toolset'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const props = defineProps<{
   toolsetId: number
@@ -75,12 +74,13 @@ const fetchResourceDetail = async () => {
   }
 
   fetching.value = true
-  const res = await $fetch(`/api/toolset/${props.toolsetId}/resource/detail`, {
-    method: 'GET',
-    query: { toolsetResourceId: base.value.id },
-    watch: false,
-    ...kungalgameResponseHandler
-  })
+  const res = await kunFetch<ToolsetResourceDetail>(
+    `/toolset/${props.toolsetId}/resource/detail`,
+    {
+      method: 'GET',
+      query: { toolsetResourceId: base.value.id }
+    }
+  )
   fetching.value = false
   if (res) {
     detail.value = res
@@ -115,11 +115,9 @@ const handleDelete = async () => {
   }
 
   isDeleting.value = true
-  const res = await $fetch(`/api/toolset/${props.toolsetId}/resource`, {
+  const res = await kunFetch(`/toolset/${props.toolsetId}/resource`, {
     method: 'DELETE',
-    query: { toolsetResourceId: base.value.id },
-    watch: false,
-    ...kungalgameResponseHandler
+    query: { toolsetResourceId: base.value.id }
   })
   isDeleting.value = false
   if (res) {
@@ -143,12 +141,13 @@ const handleSave = async () => {
   }
 
   isSaving.value = true
-  const res = await $fetch(`/api/toolset/${props.toolsetId}/resource`, {
-    method: 'PUT',
-    body,
-    watch: false,
-    ...kungalgameResponseHandler
-  })
+  const res = await kunFetch<ToolsetResource>(
+    `/toolset/${props.toolsetId}/resource`,
+    {
+      method: 'PUT',
+      body
+    }
+  )
   isSaving.value = false
   if (res) {
     base.value = res

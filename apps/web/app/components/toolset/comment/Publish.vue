@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   toolsetId: number
   parentId?: number | null
@@ -24,16 +22,17 @@ const handlePostComment = async () => {
   }
 
   isPublishing.value = true
-  const res = await $fetch(`/api/toolset/${props.toolsetId}/comment`, {
-    method: 'POST',
-    body: {
-      toolsetId: props.toolsetId,
-      content: newCommentContent.value,
-      parentId: props.parentId || null
-    },
-    watch: false,
-    ...kungalgameResponseHandler
-  })
+  const res = await kunFetch<ToolsetComment>(
+    `/toolset/${props.toolsetId}/comment`,
+    {
+      method: 'POST',
+      body: {
+        toolsetId: props.toolsetId,
+        content: newCommentContent.value,
+        parentId: props.parentId || null
+      }
+    }
+  )
   isPublishing.value = false
 
   if (res) {

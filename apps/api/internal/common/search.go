@@ -53,7 +53,7 @@ func (h *SearchHandler) Search(c *fiber.Ctx) error {
 }
 
 func (h *SearchHandler) searchTopic(c *fiber.Ctx, keywords []string, page, limit int) error {
-	type row struct {
+	type dbRow struct {
 		ID               int
 		Title            string
 		View             int
@@ -83,12 +83,39 @@ func (h *SearchHandler) searchTopic(c *fiber.Ctx, keywords []string, page, limit
 	var total int64
 	query.Count(&total)
 
-	var rows []row
+	var rows []dbRow
 	query.Order("t.status_update_time DESC").
 		Offset((page - 1) * limit).Limit(limit).
 		Find(&rows)
 
-	return response.Paginated(c, rows, total)
+	type userObj struct {
+		ID     int    `json:"id"`
+		Name   string `json:"name"`
+		Avatar string `json:"avatar"`
+	}
+	type item struct {
+		ID               int       `json:"id"`
+		Title            string    `json:"title"`
+		View             int       `json:"view"`
+		Status           int       `json:"status"`
+		LikeCount        int       `json:"likeCount"`
+		ReplyCount       int       `json:"replyCount"`
+		CommentCount     int       `json:"commentCount"`
+		StatusUpdateTime time.Time `json:"statusUpdateTime"`
+		User             userObj   `json:"user"`
+	}
+
+	items := make([]item, len(rows))
+	for i, r := range rows {
+		items[i] = item{
+			ID: r.ID, Title: r.Title, View: r.View, Status: r.Status,
+			LikeCount: r.LikeCount, ReplyCount: r.ReplyCount,
+			CommentCount: r.CommentCount, StatusUpdateTime: r.StatusUpdateTime,
+			User: userObj{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
+		}
+	}
+
+	return response.Paginated(c, items, total)
 }
 
 func (h *SearchHandler) searchUser(c *fiber.Ctx, keywords []string, page, limit int) error {
@@ -121,16 +148,16 @@ func (h *SearchHandler) searchUser(c *fiber.Ctx, keywords []string, page, limit 
 }
 
 func (h *SearchHandler) searchReply(c *fiber.Ctx, keywords []string, page, limit int) error {
-	type row struct {
-		ID         int       `json:"id"`
-		TopicID    int       `json:"topicId"`
-		TopicTitle string    `json:"topicTitle"`
-		Content    string    `json:"content"`
-		Floor      int       `json:"floor"`
-		UserID     int       `json:"userId"`
-		UserName   string    `json:"userName"`
-		UserAvatar string    `json:"userAvatar"`
-		Created    time.Time `json:"created"`
+	type dbRow struct {
+		ID         int
+		TopicID    int
+		TopicTitle string
+		Content    string
+		Floor      int
+		UserID     int
+		UserName   string
+		UserAvatar string
+		Created    time.Time
 	}
 
 	query := h.db.Table("topic_reply r").
@@ -147,24 +174,49 @@ func (h *SearchHandler) searchReply(c *fiber.Ctx, keywords []string, page, limit
 	var total int64
 	query.Count(&total)
 
-	var rows []row
+	var rows []dbRow
 	query.Order("r.created DESC").
 		Offset((page - 1) * limit).Limit(limit).
 		Find(&rows)
 
-	return response.Paginated(c, rows, total)
-}
-
-func (h *SearchHandler) searchComment(c *fiber.Ctx, keywords []string, page, limit int) error {
-	type row struct {
+	type userObj struct {
+		ID     int    `json:"id"`
+		Name   string `json:"name"`
+		Avatar string `json:"avatar"`
+	}
+	type item struct {
 		ID         int       `json:"id"`
 		TopicID    int       `json:"topicId"`
 		TopicTitle string    `json:"topicTitle"`
 		Content    string    `json:"content"`
-		UserID     int       `json:"userId"`
-		UserName   string    `json:"userName"`
-		UserAvatar string    `json:"userAvatar"`
+		Floor      int       `json:"floor"`
+		User       userObj   `json:"user"`
 		Created    time.Time `json:"created"`
+	}
+
+	items := make([]item, len(rows))
+	for i, r := range rows {
+		items[i] = item{
+			ID: r.ID, TopicID: r.TopicID, TopicTitle: r.TopicTitle,
+			Content: r.Content, Floor: r.Floor,
+			User:    userObj{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
+			Created: r.Created,
+		}
+	}
+
+	return response.Paginated(c, items, total)
+}
+
+func (h *SearchHandler) searchComment(c *fiber.Ctx, keywords []string, page, limit int) error {
+	type dbRow struct {
+		ID         int
+		TopicID    int
+		TopicTitle string
+		Content    string
+		UserID     int
+		UserName   string
+		UserAvatar string
+		Created    time.Time
 	}
 
 	query := h.db.Table("topic_comment c").
@@ -181,10 +233,34 @@ func (h *SearchHandler) searchComment(c *fiber.Ctx, keywords []string, page, lim
 	var total int64
 	query.Count(&total)
 
-	var rows []row
+	var rows []dbRow
 	query.Order("c.created DESC").
 		Offset((page - 1) * limit).Limit(limit).
 		Find(&rows)
 
-	return response.Paginated(c, rows, total)
+	type userObj struct {
+		ID     int    `json:"id"`
+		Name   string `json:"name"`
+		Avatar string `json:"avatar"`
+	}
+	type item struct {
+		ID         int       `json:"id"`
+		TopicID    int       `json:"topicId"`
+		TopicTitle string    `json:"topicTitle"`
+		Content    string    `json:"content"`
+		User       userObj   `json:"user"`
+		Created    time.Time `json:"created"`
+	}
+
+	items := make([]item, len(rows))
+	for i, r := range rows {
+		items[i] = item{
+			ID: r.ID, TopicID: r.TopicID, TopicTitle: r.TopicTitle,
+			Content: r.Content,
+			User:    userObj{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
+			Created: r.Created,
+		}
+	}
+
+	return response.Paginated(c, items, total)
 }

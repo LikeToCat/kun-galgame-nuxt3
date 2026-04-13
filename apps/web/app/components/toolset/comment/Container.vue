@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type { SerializeObject } from 'nitropack'
 
 const props = defineProps<{ toolsetId: number; ownerId?: number }>()
@@ -11,14 +10,14 @@ const pageData = reactive({
   sortOrder: 'desc'
 })
 
-const { data, status, refresh } = await useLazyFetch(
-  `/api/toolset/${props.toolsetId}/comment/all`,
-  {
-    method: 'GET',
-    query: pageData,
-    ...kungalgameResponseHandler
-  }
-)
+const { data, status, refresh } = await useKunFetch<{
+  commentData: SerializeObject<ToolsetComment>[]
+  totalCount: number
+}>(`/toolset/${props.toolsetId}/comment/all`, {
+  method: 'GET',
+  query: pageData,
+  lazy: true
+})
 
 const addNewComment = (comment: ToolsetComment) => {
   if (!data.value) {

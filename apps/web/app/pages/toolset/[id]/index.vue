@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import type {
   WithContext,
   SoftwareApplication,
@@ -13,12 +12,14 @@ const id = computed(() => {
   return parseInt((route.params as { id: string }).id)
 })
 
-const { data } = await useFetch(`/api/toolset/${id.value}`, {
-  method: 'GET',
-  query: { toolsetId: id.value },
-  watch: false,
-  ...kungalgameResponseHandler
-})
+const { data } = await useKunFetch<ToolsetDetail>(
+  `/toolset/${id.value}`,
+  {
+    method: 'GET',
+    query: { toolsetId: id.value },
+    watch: false
+  }
+)
 
 const toolset = data.value
 

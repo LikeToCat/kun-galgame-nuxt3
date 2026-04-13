@@ -219,6 +219,30 @@ func (a *App) setupRoutes() {
 	authed.Put("/series/:id", a.GalgameHandler.ProxyWriteWithToken("PUT"))
 	authed.Delete("/series/:id", a.GalgameHandler.ProxyWriteWithToken("DELETE"))
 
+	// ── Toolset routes ──
+	// Public (with optional auth for practicality "mine" field)
+	optAuth.Get("/toolset", a.ToolsetHandler.GetList)
+	optAuth.Get("/toolset/:id", a.ToolsetHandler.GetDetail)
+	optAuth.Get("/toolset/:id/practicality", a.ToolsetHandler.GetPracticality)
+	optAuth.Get("/toolset/:id/comment", a.ToolsetHandler.GetComments)
+	api.Get("/toolset/:id/resource/detail", a.ToolsetHandler.GetResourceDetail)
+
+	// Authenticated
+	authed.Post("/toolset", a.ToolsetHandler.Create)
+	authed.Put("/toolset/:id", a.ToolsetHandler.Update)
+	authed.Delete("/toolset/:id", a.ToolsetHandler.Delete)
+	authed.Put("/toolset/:id/practicality", a.ToolsetHandler.UpsertPracticality)
+	authed.Post("/toolset/:id/comment", a.ToolsetHandler.CreateComment)
+	authed.Put("/toolset/:id/comment", a.ToolsetHandler.UpdateComment)
+	authed.Delete("/toolset/:id/comment", a.ToolsetHandler.DeleteComment)
+	authed.Post("/toolset/:id/resource", a.ToolsetHandler.CreateResource)
+	authed.Put("/toolset/:id/resource", a.ToolsetHandler.UpdateResource)
+	authed.Delete("/toolset/:id/resource", a.ToolsetHandler.DeleteResource)
+	authed.Post("/toolset/:id/upload/small", a.ToolsetHandler.UploadSmall)
+	authed.Post("/toolset/:id/upload/large", a.ToolsetHandler.UploadLarge)
+	authed.Post("/toolset/:id/upload/complete", a.ToolsetHandler.UploadComplete)
+	authed.Post("/toolset/:id/upload/abort", a.ToolsetHandler.UploadAbort)
+
 	// Local galgame interactions (no wiki service call)
 	authed.Put("/galgame/:gid/like", a.GalgameHandler.ToggleLike)
 	authed.Put("/galgame/:gid/favorite", a.GalgameHandler.ToggleFavorite)

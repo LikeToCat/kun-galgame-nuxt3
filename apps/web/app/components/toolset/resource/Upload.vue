@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 import {
   MAX_SMALL_FILE_SIZE,
   MAX_LARGE_FILE_SIZE,
@@ -121,10 +120,9 @@ const abortLargeUpload = async (upload: ToolsetLargeFileUploadResponse) => {
   }
 
   try {
-    await $fetch(`/api/toolset/${props.toolsetId}/upload/abort`, {
+    await kunFetch(`/toolset/${props.toolsetId}/upload/abort`, {
       method: 'POST',
-      body: abortUploadData,
-      ...kungalgameResponseHandler
+      body: abortUploadData
     })
   } catch (abortError) {
     console.error('Failed to abort toolset upload:', abortError)
@@ -224,12 +222,11 @@ const uploadSmall = async (f: File) => {
     return
   }
 
-  const initRes = await $fetch<ToolsetSmallFileUploadResponse>(
-    `/api/toolset/${props.toolsetId}/upload/small`,
+  const initRes = await kunFetch<ToolsetSmallFileUploadResponse>(
+    `/toolset/${props.toolsetId}/upload/small`,
     {
       method: 'POST',
-      body: initUploadData,
-      ...kungalgameResponseHandler
+      body: initUploadData
     }
   )
   if (!initRes) {
@@ -259,12 +256,11 @@ const uploadSmall = async (f: File) => {
       return
     }
 
-    const done = await $fetch<ToolsetUploadCompleteResponse>(
-      `/api/toolset/${props.toolsetId}/upload/complete`,
+    const done = await kunFetch<ToolsetUploadCompleteResponse>(
+      `/toolset/${props.toolsetId}/upload/complete`,
       {
         method: 'POST',
-        body: completeUploadData,
-        ...kungalgameResponseHandler
+        body: completeUploadData
       }
     )
     if (done) {
@@ -299,12 +295,11 @@ const uploadLarge = async (f: File) => {
   }
 
   progress.value = 0
-  const initRes = await $fetch<ToolsetLargeFileUploadResponse>(
-    `/api/toolset/${props.toolsetId}/upload/large`,
+  const initRes = await kunFetch<ToolsetLargeFileUploadResponse>(
+    `/toolset/${props.toolsetId}/upload/large`,
     {
       method: 'POST',
-      body: initUploadData,
-      ...kungalgameResponseHandler
+      body: initUploadData
     }
   )
   if (!initRes) {
@@ -356,12 +351,11 @@ const uploadLarge = async (f: File) => {
       return
     }
 
-    const done = await $fetch<ToolsetUploadCompleteResponse>(
-      `/api/toolset/${props.toolsetId}/upload/complete`,
+    const done = await kunFetch<ToolsetUploadCompleteResponse>(
+      `/toolset/${props.toolsetId}/upload/complete`,
       {
         method: 'POST',
-        body: completeUploadData,
-        ...kungalgameResponseHandler
+        body: completeUploadData
       }
     )
     if (done) {

@@ -8,6 +8,7 @@ import (
 	docHandler "kun-galgame-api/internal/doc/handler"
 	galgameClient "kun-galgame-api/internal/galgame/client"
 	galgameHandler "kun-galgame-api/internal/galgame/handler"
+	toolsetHandler "kun-galgame-api/internal/toolset/handler"
 	cronPkg "kun-galgame-api/internal/infrastructure/cron"
 	"kun-galgame-api/internal/infrastructure/cache"
 	"kun-galgame-api/internal/infrastructure/database"
@@ -60,6 +61,7 @@ type App struct {
 	ActivityHandler  *common.ActivityHandler
 	ImageHandler     *common.ImageHandler
 	SearchHandler    *common.SearchHandler
+	ToolsetHandler   *toolsetHandler.ToolsetHandler
 	CronStop         func()
 }
 
@@ -109,6 +111,7 @@ func New(cfg *config.Config) *App {
 		ActivityHandler:  common.NewActivityHandler(db),
 		ImageHandler:     common.NewImageHandler(db, s3Client),
 		SearchHandler:    common.NewSearchHandler(db),
+		ToolsetHandler:   toolsetHandler.NewToolsetHandler(db, s3Client, rdb),
 		CronStop:         cronPkg.Start(db, rdb),
 	}
 

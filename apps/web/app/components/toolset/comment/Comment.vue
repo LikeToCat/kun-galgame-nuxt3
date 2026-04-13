@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const props = defineProps<{
   comment: ToolsetComment
   ownerId: number
@@ -25,11 +23,9 @@ const canEdit = computed(() => props.comment.user.id === myUid)
 const handleDelete = async () => {
   const res = await useComponentMessageStore().alert('确认删除该评论？')
   if (!res) return
-  const ok = await $fetch(`/api/toolset/${props.comment.toolsetId}/comment`, {
+  const ok = await kunFetch(`/toolset/${props.comment.toolsetId}/comment`, {
     method: 'DELETE',
-    query: { commentId: props.comment.id },
-    watch: false,
-    ...kungalgameResponseHandler
+    query: { commentId: props.comment.id }
   })
   if (ok) {
     useMessage(10538, 'success')
@@ -50,11 +46,9 @@ const saveEdit = async () => {
     useMessage(10540, 'warn')
     return
   }
-  const ok = await $fetch(`/api/toolset/${props.comment.toolsetId}/comment`, {
+  const ok = await kunFetch(`/toolset/${props.comment.toolsetId}/comment`, {
     method: 'PUT',
-    body: { commentId: props.comment.id, content: editContent.value },
-    watch: false,
-    ...kungalgameResponseHandler
+    body: { commentId: props.comment.id, content: editContent.value }
   })
   if (ok) {
     emits(

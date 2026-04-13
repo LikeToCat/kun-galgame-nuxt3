@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { createToolsetResourceSchema } from '~/validations/toolset'
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
 
 const props = defineProps<{
   toolsetId: number
@@ -41,17 +40,16 @@ const submitLink = async () => {
   }
 
   isLoading.value = true
-  const ok = await $fetch(`/api/toolset/${props.toolsetId}/resource`, {
-    method: 'POST',
-    body: formData,
-    watch: false,
-    ...kungalgameResponseHandler
-  })
+  const ok = await kunFetch<ToolsetResource>(
+    `/toolset/${props.toolsetId}/resource`,
+    {
+      method: 'POST',
+      body: formData
+    }
+  )
   isLoading.value = false
 
-  if (typeof ok === 'string') {
-    useMessage(ok, 'warn')
-  } else {
+  if (ok) {
     useMessage('资源发布成功', 'success')
     emits('onSuccess', ok)
     emits('onClose')
