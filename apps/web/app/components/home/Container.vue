@@ -1,15 +1,16 @@
 <script setup lang="ts">
-const { data } = await useKunFetch<{
-  galgames: HomeGalgame[]
-  topics: HomeTopic[]
-}>('/home')
-
-const { data: activityData } = await useKunFetch<{
-  items: ActivityItem[]
-  total: number
-}>('/activity', {
-  query: { page: 1, limit: 20, type: 'all' }
-})
+const [{ data }, { data: activityData }] = await Promise.all([
+  useKunFetch<{
+    galgames: HomeGalgame[]
+    topics: HomeTopic[]
+  }>('/home'),
+  useKunFetch<{
+    items: ActivityItem[]
+    total: number
+  }>('/activity', {
+    query: { page: 1, limit: 20, type: 'all' }
+  })
+])
 
 const activities = computed(() => activityData.value?.items || [])
 </script>

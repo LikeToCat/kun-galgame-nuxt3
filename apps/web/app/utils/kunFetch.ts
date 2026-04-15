@@ -1,11 +1,6 @@
-import Cookies from 'js-cookie'
-
 /**
  * Unified API response format from Go backend.
  * All endpoints return: { code: 0, message: "成功", data: T }
- *
- * For paginated endpoints, data itself contains { items, total }:
- *   { code: 0, message: "成功", data: { items: [...], total: 42 } }
  */
 interface KunApiResponse<T> {
   code: number
@@ -14,15 +9,12 @@ interface KunApiResponse<T> {
 }
 
 const CODE_AUTH_EXPIRED = 205
-const CODE_BIZ_ERROR = 233
 
-const getApiBase = () => {
-  const config = useRuntimeConfig()
-  return config.public.apiBaseUrl as string
-}
+const handleApiError = async (code: number, message: string) => {
+  if (import.meta.server) return
 
-const handleError = async (code: number, message: string) => {
   if (code === CODE_AUTH_EXPIRED) {
+    const { default: Cookies } = await import('js-cookie')
     const navigateCookie = Cookies.get('kun-is-navigate-to-login')
     const userStore = usePersistUserStore()
 
@@ -37,14 +29,59 @@ const handleError = async (code: number, message: string) => {
     return
   }
 
-  if (code === CODE_BIZ_ERROR) {
+  if (code !== 0) {
     useMessage(message, 'error')
   }
 }
 
 /**
- * kunFetch - Imperative fetch for mutations (button clicks, form submits).
- * Unwraps { code, data } and handles errors automatically.
+ * useKunFetch — SSR-safe composable built on Nuxt 4 `createUseFetch`.
+ *
+ * Automatically:
+ * - Resolves baseURL for SSR/CSR
+ * - Forwards cookies during SSR via credentials
+ * - Unwraps `{ code, data }` response
+ * - Handles auth/biz errors client-side only
+ *
+ * The response type T is what the Go backend returns inside `data`.
+ * The transform unwraps it so `data.value` is `T | null` directly.
+ *
+ * @example
+ * const { data } = await useKunFetch<HomeData>('/home')
+ * // data.value?.galgames
+ *
+ * @example
+ * const { data } = await useKunFetch<{ items: T[], total: number }>(
+ *   '/topic',
+ *   { query: pageData }
+ * )
+ */
+export const useKunFetch = createUseFetch({
+  baseURL: computed(() => {
+    const config = useRuntimeConfig()
+    const base = import.meta.server
+      ? config.apiBaseUrl
+      : config.public.apiBaseUrl
+    return `${base}/api`
+  }),
+  credentials: 'include',
+  async onResponseError({ response }) {
+    const resp = response._data as KunApiResponse<unknown> | undefined
+    if (resp && resp.code !== 0) {
+      await handleApiError(resp.code, resp.message)
+    }
+  },
+  transform(resp: any) {
+    if (!resp || resp.code !== 0) {
+      return null
+    }
+    return resp.data
+  }
+})
+
+/**
+ * kunFetch — Imperative fetch for mutations (button clicks, form submits).
+ * Client-side only. Unwraps { code, data } and handles errors.
  * Returns the unwrapped data, or null on error.
  *
  * @example
@@ -58,71 +95,27 @@ export const kunFetch = async <T>(
   url: string,
   options?: Record<string, unknown>
 ): Promise<T | null> => {
+  const config = useRuntimeConfig()
+  const apiBase = `${config.public.apiBaseUrl}/api`
+
   try {
-    const resp = await $fetch<KunApiResponse<T>>(
-      `${getApiBase()}/api${url}`,
-      {
-        credentials: 'include',
-        ...options
+    const resp = await $fetch<KunApiResponse<T>>(`${apiBase}${url}`, {
+      credentials: 'include',
+      ...options
+    })
+
+    if (!resp || resp.code !== 0) {
+      if (resp) {
+        await handleApiError(resp.code, resp.message)
       }
-    )
-
-    if (!resp) {
-      useMessage('网络请求失败，请稍后重试', 'error')
-      return null
-    }
-
-    if (resp.code !== 0) {
-      await handleError(resp.code, resp.message)
       return null
     }
 
     return resp.data
   } catch {
-    useMessage('网络请求失败，请稍后重试', 'error')
-    return null
-  }
-}
-
-/**
- * useKunFetch - SSR-safe composable for data fetching.
- * Wraps useFetch, automatically unwraps { code, data } via transform.
- * data.value is T | null (already unwrapped).
- *
- * @example
- * const { data } = await useKunFetch<HomeData>('/home')
- * // data.value?.galgames
- *
- * @example
- * const { data, status } = await useKunFetch<{ items: Topic[], total: number }>(
- *   '/topic',
- *   { query: pageData }
- * )
- */
-export const useKunFetch = <T>(
-  url: string | (() => string),
-  options?: Record<string, unknown>
-) => {
-  const resolvedUrl = typeof url === 'function' ? url : () => url
-  const apiBase = getApiBase()
-
-  return useFetch(() => `${apiBase}/api${resolvedUrl()}`, {
-    credentials: 'include',
-    ...options,
-    transform: (resp: KunApiResponse<T>) => {
-      if (!resp || resp.code !== 0) {
-        return null as T | null
-      }
-      return resp.data
-    },
-    onResponse: async (ctx) => {
-      const resp = ctx.response._data as KunApiResponse<T> | undefined
-      if (resp && resp.code !== 0) {
-        await handleError(resp.code, resp.message)
-      }
-    },
-    onResponseError: () => {
+    if (import.meta.client) {
       useMessage('网络请求失败，请稍后重试', 'error')
     }
-  })
+    return null
+  }
 }

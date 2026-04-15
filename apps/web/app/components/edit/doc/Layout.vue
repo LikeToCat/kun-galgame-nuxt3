@@ -14,25 +14,15 @@ const props = withDefaults(
 
 const isRewriteMode = computed(() => props.mode === 'rewrite')
 
-const { data: categoryResponse } = await useKunFetch<DocCategoryListResponse>(
-  '/doc/category',
-  {
-    query: {
-      page: 1,
-      limit: 100,
-      keyword: ''
-    }
-  }
-)
-
-const { data: tagResponse, refresh: refreshTagResponse } =
-  await useKunFetch<DocTagListResponse>('/doc/tag', {
-    query: {
-      page: 1,
-      limit: 100,
-      keyword: ''
-    }
-  })
+const [{ data: categoryResponse }, { data: tagResponse, refresh: refreshTagResponse }] =
+  await Promise.all([
+    useKunFetch<DocCategoryListResponse>('/doc/category', {
+      query: { page: 1, limit: 100, keyword: '' }
+    }),
+    useKunFetch<DocTagListResponse>('/doc/tag', {
+      query: { page: 1, limit: 100, keyword: '' }
+    })
+  ])
 
 const categories = ref<DocCategoryItem[]>([])
 const tags = ref<DocTagItem[]>([])
@@ -40,7 +30,7 @@ const tags = ref<DocTagItem[]>([])
 watch(
   categoryResponse,
   (response) => {
-    categories.value = response?.categories ?? []
+    categories.value = response?.items ?? []
   },
   { immediate: true }
 )
@@ -48,7 +38,7 @@ watch(
 watch(
   tagResponse,
   (response) => {
-    tags.value = response?.tags ?? []
+    tags.value = response?.items ?? []
   },
   { immediate: true }
 )

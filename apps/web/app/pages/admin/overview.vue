@@ -21,13 +21,12 @@ watchDebounced(
   { debounce: 300, maxWait: 1000 }
 )
 
-const { data: allStats } = await useKunFetch<AdminOverviewAll[]>(
-  '/admin/overview/all'
-)
-
-const { data } = await useKunFetch<StatDay[]>('/admin/overview/stats', {
-  query: { days: debouncedDays }
-})
+const [{ data: allStats }, { data }] = await Promise.all([
+  useKunFetch<AdminOverviewAll[]>('/admin/overview/all'),
+  useKunFetch<StatDay[]>('/admin/overview/stats', {
+    query: { days: debouncedDays }
+  })
+])
 
 const totalStats = computed(() => {
   if (!data.value) return []

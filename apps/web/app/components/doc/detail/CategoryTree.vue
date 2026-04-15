@@ -1,22 +1,20 @@
 <script setup lang="ts">
 const route = useRoute()
 
-const { data: categoryResponse } = await useKunFetch<DocCategoryListResponse>(
-  '/doc/category',
-  { query: { page: 1, limit: 100 } }
-)
-
-const { data: articleResponse } = await useKunFetch<DocArticleListResponse>(
-  '/doc/article',
-  {
-    query: {
-      page: 1,
-      limit: 100,
-      orderBy: 'published_time',
-      sortOrder: 'desc'
-    }
-  }
-)
+const [{ data: categoryResponse }, { data: articleResponse }] =
+  await Promise.all([
+    useKunFetch<DocCategoryListResponse>('/doc/category', {
+      query: { page: 1, limit: 100 }
+    }),
+    useKunFetch<DocArticleListResponse>('/doc/article', {
+      query: {
+        page: 1,
+        limit: 100,
+        orderBy: 'published_time',
+        sortOrder: 'desc'
+      }
+    })
+  ])
 
 const expandedCategories = ref<Record<number, boolean>>({})
 
