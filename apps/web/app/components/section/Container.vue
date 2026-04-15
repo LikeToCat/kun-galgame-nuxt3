@@ -118,7 +118,7 @@ watch(
     <KunPagination
       v-if="data"
       v-model:current-page="page"
-      :total-page="Math.ceil(data.totalCount / 30)"
+      :total-page="Math.ceil(data.total / 30)"
       :is-loading="status === 'pending'"
     />
   </KunCard>

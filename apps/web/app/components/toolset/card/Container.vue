@@ -3,7 +3,7 @@ const pageData = storeToRefs(useTempToolsetStore())
 
 const { data, status } = await useKunFetch<{
   items: ToolsetCard[]
-  totalCount: number
+  total: number
 }>('/toolset', {
   method: 'GET',
   query: pageData
@@ -34,7 +34,7 @@ const { data, status } = await useKunFetch<{
     >
       <KunPagination
         v-model:current-page="pageData.page.value"
-        :total-page="Math.ceil(data.totalCount / pageData.limit.value)"
+        :total-page="Math.ceil(data.total / pageData.limit.value)"
         :is-loading="status === 'pending'"
       />
     </KunCard>

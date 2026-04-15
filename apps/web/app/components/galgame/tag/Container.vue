@@ -92,7 +92,7 @@ const fetchGames = async () => {
   loadingGames.value = false
   if (res) {
     resultGames.value = res.galgames
-    totalGameCount.value = res.totalCount
+    totalGameCount.value = res.total
   }
 }
 
@@ -206,7 +206,7 @@ watch(
             v-if="searchMode === 'single'"
             class="text-default-600 mt-4 flex items-center gap-4 text-sm"
           >
-            <span>{{ `共 ${data?.totalCount || 0} 个标签` }}</span>
+            <span>{{ `共 ${data?.total || 0} 个标签` }}</span>
           </div>
         </div>
       </template>
@@ -235,10 +235,10 @@ watch(
         searchMode === 'multi' &&
         !selectedTags.length &&
         data &&
-        data.totalCount > pageData.limit
+        data.total > pageData.limit
       "
       v-model:current-page="pageData.page"
-      :total-page="Math.ceil(data.totalCount / pageData.limit)"
+      :total-page="Math.ceil(data.total / pageData.limit)"
       :is-loading="status === 'pending'"
     />
 

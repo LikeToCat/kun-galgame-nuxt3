@@ -37,9 +37,9 @@ useKunSeoMeta({
     </div>
 
     <KunPagination
-      v-if="data.totalCount > pageData.limit"
+      v-if="data.total > pageData.limit"
       v-model:current-page="pageData.page"
-      :total-page="Math.ceil(data.totalCount / pageData.limit)"
+      :total-page="Math.ceil(data.total / pageData.limit)"
       :is-loading="status === 'pending'"
     />
   </KunCard>

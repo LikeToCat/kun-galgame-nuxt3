@@ -74,9 +74,9 @@ const { data, status } = await useKunFetch(`/galgame-rating/all`, {
     <GalgameRatingCard v-if="data" :ratings="data.ratingData" />
 
     <KunPagination
-      v-if="(data?.totalCount || 0) > params.limit"
+      v-if="(data?.total || 0) > params.limit"
       v-model:current-page="params.page"
-      :total-page="Math.ceil((data?.totalCount || 0) / params.limit)"
+      :total-page="Math.ceil((data?.total || 0) / params.limit)"
       :is-loading="status === 'pending'"
     />
   </KunCard>

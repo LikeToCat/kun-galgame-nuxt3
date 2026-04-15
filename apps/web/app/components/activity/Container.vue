@@ -67,7 +67,7 @@ const { data, status } = await useKunFetch('/activity', {
 
     <KunPagination
       v-model:current-page="pageData.page"
-      :total-page="Math.ceil(data.totalCount / pageData.limit)"
+      :total-page="Math.ceil(data.total / pageData.limit)"
       :is-loading="status === 'pending'"
     />
   </KunCard>

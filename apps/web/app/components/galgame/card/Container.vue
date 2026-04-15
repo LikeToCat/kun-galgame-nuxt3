@@ -45,7 +45,7 @@ const { data, status } = await useKunFetch(`/galgame`, {
     >
       <KunPagination
         v-model:current-page="pageData.page.value"
-        :total-page="Math.ceil(data.totalCount / pageData.limit.value)"
+        :total-page="Math.ceil(data.total / pageData.limit.value)"
         :is-loading="status === 'pending'"
       />
     </KunCard>

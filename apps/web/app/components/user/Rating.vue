@@ -11,7 +11,7 @@ const pageData = reactive({
 
 const { data, status } = await useKunFetch<{
   ratingData: GalgameRatingCard[]
-  totalCount: number
+  total: number
 }>(`/user/${props.uid}/ratings`, { query: pageData })
 </script>
 
@@ -26,9 +26,9 @@ const { data, status } = await useKunFetch<{
       <GalgameRatingCard :ratings="data.ratingData" />
 
       <KunPagination
-        v-if="data.totalCount > pageData.limit"
+        v-if="data.total > pageData.limit"
         v-model:current-page="pageData.page"
-        :total-page="Math.ceil(data.totalCount / pageData.limit)"
+        :total-page="Math.ceil(data.total / pageData.limit)"
         :is-loading="status === 'pending'"
       />
     </div>

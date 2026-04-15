@@ -12,7 +12,7 @@ const pageData = reactive({
 
 const { data, status, refresh } = await useKunFetch<{
   commentData: SerializeObject<ToolsetComment>[]
-  totalCount: number
+  total: number
 }>(`/toolset/${props.toolsetId}/comment/all`, {
   method: 'GET',
   query: pageData,
@@ -60,11 +60,11 @@ const updateComment = (commentId: number, content: string, edited: string) => {
 
     <KunLoading v-if="status === 'pending'" />
 
-    <KunNull v-if="data && data.totalCount === 0 && status !== 'pending'" />
+    <KunNull v-if="data && data.total === 0 && status !== 'pending'" />
 
     <div
       class="space-y-3"
-      v-if="data && data.totalCount > 0 && status !== 'pending'"
+      v-if="data && data.total > 0 && status !== 'pending'"
     >
       <div class="flex items-center gap-2">
         <KunButton
@@ -97,9 +97,9 @@ const updateComment = (commentId: number, content: string, edited: string) => {
       />
 
       <KunPagination
-        v-if="data.totalCount >= pageData.limit"
+        v-if="data.total >= pageData.limit"
         v-model:current-page="pageData.page"
-        :total-page="Math.ceil(data.totalCount / pageData.limit)"
+        :total-page="Math.ceil(data.total / pageData.limit)"
       />
     </div>
   </div>

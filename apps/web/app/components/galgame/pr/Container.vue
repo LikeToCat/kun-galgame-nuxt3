@@ -43,9 +43,9 @@ const { data, status, refresh } = await useKunFetch(
     </div>
 
     <KunPagination
-      v-if="data.totalCount > 10 || data.totalCount === 10"
+      v-if="data.total > 10 || data.total === 10"
       v-model:current-page="pageData.page"
-      :total-page="Math.ceil(data.totalCount / pageData.limit)"
+      :total-page="Math.ceil(data.total / pageData.limit)"
       :is-loading="status === 'pending'"
     />
   </div>

@@ -30,7 +30,7 @@ const pageData = reactive({
 
 const { data, status, refresh } = await useKunFetch<{
   resources: UserGalgameResource[]
-  totalCount: number
+  total: number
 }>(`/user/${props.uid}/resources`, { query: pageData })
 
 const draftLinks = ref<string[]>([])
@@ -188,9 +188,9 @@ const submitFix = async (index: number) => {
       </template>
 
       <KunPagination
-        v-if="data.totalCount > pageData.limit"
+        v-if="data.total > pageData.limit"
         v-model:current-page="pageData.page"
-        :total-page="Math.ceil(data.totalCount / pageData.limit)"
+        :total-page="Math.ceil(data.total / pageData.limit)"
         :is-loading="status === 'pending'"
       />
     </div>

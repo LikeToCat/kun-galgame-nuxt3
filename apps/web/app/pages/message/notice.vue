@@ -50,12 +50,12 @@ onMounted(async () => {
       />
     </div>
 
-    <KunNull v-if="!data.totalCount" />
+    <KunNull v-if="!data.total" />
 
     <KunPagination
-      v-if="data.totalCount"
+      v-if="data.total"
       v-model:current-page="pageData.page"
-      :total-page="Math.ceil(data.totalCount / pageData.limit)"
+      :total-page="Math.ceil(data.total / pageData.limit)"
       :is-loading="status === 'pending'"
     />
   </div>

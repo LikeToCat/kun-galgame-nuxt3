@@ -132,7 +132,7 @@ const handleTodoAction = async (data: UpdateTodoPayload) => {
       <KunPagination
         v-if="data"
         v-model:current-page="pageData.page"
-        :total-page="Math.ceil(data.totalCount / pageData.limit)"
+        :total-page="Math.ceil(data.total / pageData.limit)"
         :is-loading="status === 'pending'"
       />
     </KunCard>

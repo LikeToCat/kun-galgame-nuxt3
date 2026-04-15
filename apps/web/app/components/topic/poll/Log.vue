@@ -16,7 +16,7 @@ const emits = defineEmits<{
 }>()
 
 const logs = ref<TopicPollVoteLog[]>([])
-const totalCount = ref(0)
+const total = ref(0)
 const isLoading = ref(false)
 
 const fetchLogs = async () => {
@@ -24,14 +24,14 @@ const fetchLogs = async () => {
   isLoading.value = true
   const res = await kunFetch<{
     logs: TopicPollVoteLog[]
-    totalCount: number
+    total: number
   }>(`/topic/${props.topicId}/poll/log`, {
     query: pageData
   })
   isLoading.value = false
   if (res) {
     logs.value = res.logs
-    totalCount.value = res.totalCount
+    total.value = res.total
   }
 }
 

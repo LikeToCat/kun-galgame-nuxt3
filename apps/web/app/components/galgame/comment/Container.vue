@@ -60,7 +60,7 @@ onMounted(() => (commentToUid.value = props.targetUser.id))
 
     <div class="space-y-3" v-if="data">
       <GalgameCommentPanel :to-user="targetUser" :refresh="refresh">
-        <div v-if="data.totalCount" class="flex items-center gap-2">
+        <div v-if="data.total" class="flex items-center gap-2">
           <KunButton
             :is-icon-only="true"
             :variant="pageData.sortOrder === 'desc' ? 'flat' : 'light'"
@@ -84,11 +84,11 @@ onMounted(() => (commentToUid.value = props.targetUser.id))
       <KunLoading v-if="status === 'pending'" />
 
       <KunNull
-        v-if="!data.totalCount && status !== 'pending'"
+        v-if="!data.total && status !== 'pending'"
         description="没人评论, 是没人要这个 Galgame 的小只可爱软萌女孩子了吗, 呜呜呜呜呜呜！！"
       />
 
-      <div class="space-y-3" v-if="status !== 'pending' && data.totalCount">
+      <div class="space-y-3" v-if="status !== 'pending' && data.total">
         <GalgameComment
           v-for="comment in data.commentData"
           :key="comment.id"
@@ -98,9 +98,9 @@ onMounted(() => (commentToUid.value = props.targetUser.id))
       </div>
 
       <KunPagination
-        v-if="data.totalCount > 30 || data.totalCount === 30"
+        v-if="data.total > 30 || data.total === 30"
         v-model:current-page="pageData.page"
-        :total-page="Math.ceil(data.totalCount / pageData.limit)"
+        :total-page="Math.ceil(data.total / pageData.limit)"
         :is-loading="status === 'pending'"
       />
     </div>

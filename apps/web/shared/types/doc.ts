@@ -18,7 +18,7 @@ export interface DocCategoryItem {
 
 export interface DocCategoryListResponse {
   categories: DocCategoryItem[]
-  totalCount: number
+  total: number
   page: number
   limit: number
 }
@@ -34,7 +34,7 @@ export interface DocTagItem {
 
 export interface DocTagListResponse {
   tags: DocTagItem[]
-  totalCount: number
+  total: number
   page: number
   limit: number
 }

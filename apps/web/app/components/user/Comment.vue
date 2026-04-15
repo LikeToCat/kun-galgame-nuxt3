@@ -19,7 +19,7 @@ const pageData = reactive({
 
 const { data, status } = await useKunFetch<{
   comments: UserComment[]
-  totalCount: number
+  total: number
 }>(`/user/${props.uid}/comments`, { query: pageData })
 </script>
 
@@ -53,7 +53,7 @@ const { data, status } = await useKunFetch<{
 
       <KunPagination
         v-model:current-page="pageData.page"
-        :total-page="Math.ceil(data.totalCount / pageData.limit)"
+        :total-page="Math.ceil(data.total / pageData.limit)"
         :is-loading="status === 'pending'"
       />
     </div>

@@ -59,9 +59,9 @@ const handleCreateSeries = async (data: UpdateGalgameSeriesPayload) => {
     </div>
 
     <KunPagination
-      v-if="data && data.totalCount > pageData.limit"
+      v-if="data && data.total > pageData.limit"
       v-model:current-page="pageData.page"
-      :total-page="Math.ceil(data.totalCount / pageData.limit)"
+      :total-page="Math.ceil(data.total / pageData.limit)"
       :is-loading="status === 'pending'"
     />
   </KunCard>

@@ -68,7 +68,7 @@ watchDebounced(
 
           <div class="text-default-600 mt-4 flex items-center gap-4 text-sm">
             <span v-if="!searchQuery.trim()">
-              {{ `总计 ${data?.totalCount || 0} 个用户` }}
+              {{ `总计 ${data?.total || 0} 个用户` }}
             </span>
             <span v-else>{{ `搜索结果: ${searchResult.length} 个用户` }}</span>
           </div>
@@ -91,9 +91,9 @@ watchDebounced(
     <KunLoading v-if="isSearching" />
 
     <KunPagination
-      v-if="data.totalCount > pageData.limit && !searchQuery.trim()"
+      v-if="data.total > pageData.limit && !searchQuery.trim()"
       v-model:current-page="pageData.page"
-      :total-page="Math.ceil(data.totalCount / pageData.limit)"
+      :total-page="Math.ceil(data.total / pageData.limit)"
       :is-loading="status === 'pending'"
     />
   </KunCard>

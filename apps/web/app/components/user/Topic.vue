@@ -19,7 +19,7 @@ const pageData = reactive({
 
 const { data, status } = await useKunFetch<{
   topics: UserTopic[]
-  totalCount: number
+  total: number
 }>(`/user/${props.uid}/topics`, { query: pageData })
 
 const handleUpdateTopicHideStatus = async (topicId: number) => {
@@ -101,9 +101,9 @@ const handleUpdateTopicHideStatus = async (topicId: number) => {
     </div>
 
     <KunPagination
-      v-if="data && data.totalCount > pageData.limit"
+      v-if="data && data.total > pageData.limit"
       v-model:current-page="pageData.page"
-      :total-page="Math.ceil(data.totalCount / pageData.limit)"
+      :total-page="Math.ceil(data.total / pageData.limit)"
       :is-loading="status === 'pending'"
     />
 
