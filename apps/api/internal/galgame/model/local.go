@@ -2,18 +2,20 @@ package model
 
 import "time"
 
-// GalgameStats holds per-site aggregated counts for a galgame.
-// This table is in the local (kungal) database, not the wiki database.
-type GalgameStats struct {
-	GalgameID     int `gorm:"primaryKey" json:"galgame_id"`
-	LikeCount     int `gorm:"default:0" json:"like_count"`
-	FavoriteCount int `gorm:"default:0" json:"favorite_count"`
-	ResourceCount int `gorm:"default:0" json:"resource_count"`
-	CommentCount  int `gorm:"default:0" json:"comment_count"`
-	RatingCount   int `gorm:"default:0" json:"rating_count"`
+// GalgameLocal represents the stripped-down local galgame row.
+// After wiki migration, only interaction counts + view remain locally.
+type GalgameLocal struct {
+	ID               int `gorm:"primaryKey" json:"id"`
+	View             int `gorm:"default:0" json:"view"`
+	LikeCount        int `gorm:"column:like_count;default:0" json:"like_count"`
+	FavoriteCount    int `gorm:"column:favorite_count;default:0" json:"favorite_count"`
+	ResourceCount    int `gorm:"column:resource_count;default:0" json:"resource_count"`
+	CommentCount     int `gorm:"column:comment_count;default:0" json:"comment_count"`
+	ContributorCount int `gorm:"column:contributor_count;default:0" json:"contributor_count"`
+	RatingCount      int `gorm:"column:rating_count;default:0" json:"rating_count"`
 }
 
-func (GalgameStats) TableName() string { return "galgame_stats" }
+func (GalgameLocal) TableName() string { return "galgame" }
 
 // ──────────────────────────────────────────
 // Interactions (local to each site)

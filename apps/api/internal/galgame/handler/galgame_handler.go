@@ -9,6 +9,7 @@ import (
 	"kun-galgame-api/internal/constants"
 	"kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/internal/galgame/model"
+	"kun-galgame-api/internal/infrastructure/markdown"
 	msgModel "kun-galgame-api/internal/message/model"
 	"kun-galgame-api/internal/middleware"
 	userModel "kun-galgame-api/internal/user/model"
@@ -70,7 +71,7 @@ func (h *GalgameHandler) Create(c *fiber.Ctx) error {
 
 	if created.ID > 0 {
 		h.db.Transaction(func(tx *gorm.DB) error {
-			tx.Create(&model.GalgameStats{GalgameID: created.ID})
+			tx.Create(&model.GalgameLocal{ID: created.ID})
 			tx.Model(&userModel.User{}).Where("id = ?", user.UID).
 				Update("moemoepoint", gorm.Expr("moemoepoint + ?", constants.RewardCreateGalgame))
 			return nil
@@ -132,6 +133,7 @@ func (h *GalgameHandler) MergePR(c *fiber.Ctx) error {
 func (h *GalgameHandler) GetDetail(c *fiber.Ctx) error {
 	gid := c.Params("gid")
 	userInfo := middleware.GetUser(c)
+	gidInt, _ := strconv.Atoi(gid)
 
 	// Fetch wiki metadata
 	wikiData, appErr := h.galgameClient.Get(c.Context(), "/galgame/"+gid, nil)
@@ -139,35 +141,378 @@ func (h *GalgameHandler) GetDetail(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	gidInt, _ := strconv.Atoi(gid)
-
-	// Fetch local stats
-	var stats model.GalgameStats
-	h.db.Where("galgame_id = ?", gidInt).FirstOrCreate(&stats, model.GalgameStats{GalgameID: gidInt})
-
-	// Fetch user interaction
-	isLiked := false
-	isFavorited := false
-	if userInfo != nil {
-		var likeCount, favCount int64
-		h.db.Model(&model.GalgameLike{}).Where("user_id = ? AND galgame_id = ?", userInfo.UID, gidInt).Count(&likeCount)
-		h.db.Model(&model.GalgameFavorite{}).Where("user_id = ? AND galgame_id = ?", userInfo.UID, gidInt).Count(&favCount)
-		isLiked = likeCount > 0
-		isFavorited = favCount > 0
+	// Parse wiki response
+	type wikiAlias struct {
+		Name string `json:"name"`
+	}
+	type wikiOfficialAlias struct {
+		Name string `json:"name"`
+	}
+	type wikiOfficial struct {
+		ID       int                 `json:"id"`
+		Name     string              `json:"name"`
+		Link     string              `json:"link"`
+		Category string              `json:"category"`
+		Lang     string              `json:"lang"`
+		Alias    []wikiOfficialAlias `json:"alias"`
+	}
+	type wikiOfficialRel struct {
+		Official wikiOfficial `json:"official"`
+	}
+	type wikiEngine struct {
+		ID    int      `json:"id"`
+		Name  string   `json:"name"`
+		Alias []string `json:"alias"`
+	}
+	type wikiEngineRel struct {
+		Engine wikiEngine `json:"engine"`
+	}
+	type wikiTag struct {
+		SpoilerLevel int `json:"spoiler_level"`
+		Tag          struct {
+			ID       int    `json:"id"`
+			Name     string `json:"name"`
+			Category string `json:"category"`
+		} `json:"tag"`
+	}
+	type wikiContributor struct {
+		UserID int `json:"user_id"`
+	}
+	type wikiUser struct {
+		ID     int    `json:"id"`
+		Name   string `json:"name"`
+		Avatar string `json:"avatar"`
+	}
+	type wikiGalgame struct {
+		ID                 int                `json:"id"`
+		VndbID             string             `json:"vndb_id"`
+		NameEnUs           string             `json:"name_en_us"`
+		NameJaJp           string             `json:"name_ja_jp"`
+		NameZhCn           string             `json:"name_zh_cn"`
+		NameZhTw           string             `json:"name_zh_tw"`
+		Banner             string             `json:"banner"`
+		IntroEnUs          string             `json:"intro_en_us"`
+		IntroJaJp          string             `json:"intro_ja_jp"`
+		IntroZhCn          string             `json:"intro_zh_cn"`
+		IntroZhTw          string             `json:"intro_zh_tw"`
+		ContentLimit       string             `json:"content_limit"`
+		View               int                `json:"view"`
+		ResourceUpdateTime string             `json:"resource_update_time"`
+		OriginalLanguage   string             `json:"original_language"`
+		AgeLimit           string             `json:"age_limit"`
+		UserID             int                `json:"user_id"`
+		SeriesID           *int               `json:"series_id"`
+		Status             int                `json:"status"`
+		Alias              []wikiAlias        `json:"alias"`
+		Official           []wikiOfficialRel  `json:"official"`
+		Engine             []wikiEngineRel    `json:"engine"`
+		Tag                []wikiTag          `json:"tag"`
+		Contributor        []wikiContributor  `json:"contributor"`
+		Created            string             `json:"created"`
+		Updated            string             `json:"updated"`
+	}
+	var parsed struct {
+		Galgame wikiGalgame         `json:"galgame"`
+		Users   map[string]wikiUser `json:"users"`
+	}
+	if err := json.Unmarshal(wikiData, &parsed); err != nil {
+		return response.Error(c, errors.ErrInternal("解析 Wiki 响应失败"))
 	}
 
-	// Merge response
-	var wikiResult json.RawMessage = wikiData
-	return c.JSON(fiber.Map{
-		"code":    0,
-		"message": "成功",
-		"data": fiber.Map{
-			"wiki":        wikiResult,
-			"stats":       stats,
-			"isLiked":     isLiked,
-			"isFavorited": isFavorited,
+	g := parsed.Galgame
+	if g.Status == 1 {
+		return response.Error(c, errors.ErrNotFound("该 Galgame 已被封禁"))
+	}
+
+	// Increment view
+	go h.db.Table("galgame").Where("id = ?", gidInt).
+		Update("view", gorm.Expr("view + 1"))
+
+	// Local stats
+	var local model.GalgameLocal
+	h.db.Where("id = ?", gidInt).First(&local)
+
+	// User interaction
+	isLiked, isFavorited := false, false
+	if userInfo != nil {
+		var lc, fc int64
+		h.db.Model(&model.GalgameLike{}).Where("user_id = ? AND galgame_id = ?", userInfo.UID, gidInt).Count(&lc)
+		h.db.Model(&model.GalgameFavorite{}).Where("user_id = ? AND galgame_id = ?", userInfo.UID, gidInt).Count(&fc)
+		isLiked, isFavorited = lc > 0, fc > 0
+	}
+
+	// Resolve user from wiki users map
+	resolveUser := func(uid int) fiber.Map {
+		key := fmt.Sprintf("%d", uid)
+		if u, ok := parsed.Users[key]; ok {
+			return fiber.Map{"id": u.ID, "name": u.Name, "avatar": u.Avatar}
+		}
+		return fiber.Map{"id": uid, "name": "", "avatar": ""}
+	}
+
+	// Convert introduction markdown to HTML
+	introHTML := fiber.Map{
+		"en-us": markdown.Render(g.IntroEnUs),
+		"ja-jp": markdown.Render(g.IntroJaJp),
+		"zh-cn": markdown.Render(g.IntroZhCn),
+		"zh-tw": markdown.Render(g.IntroZhTw),
+	}
+
+	// Alias → string[]
+	aliases := make([]string, len(g.Alias))
+	for i, a := range g.Alias {
+		aliases[i] = a.Name
+	}
+
+	// Contributors
+	contributors := make([]fiber.Map, len(g.Contributor))
+	for i, c := range g.Contributor {
+		contributors[i] = resolveUser(c.UserID)
+	}
+
+	// Officials
+	officials := make([]fiber.Map, len(g.Official))
+	for i, o := range g.Official {
+		aliasNames := make([]string, len(o.Official.Alias))
+		for j, a := range o.Official.Alias {
+			aliasNames[j] = a.Name
+		}
+		officials[i] = fiber.Map{
+			"id": o.Official.ID, "name": o.Official.Name,
+			"link": o.Official.Link, "category": o.Official.Category,
+			"lang": o.Official.Lang, "alias": aliasNames,
+			"galgameCount": 0,
+		}
+	}
+
+	// Engines
+	engines := make([]fiber.Map, len(g.Engine))
+	for i, e := range g.Engine {
+		engines[i] = fiber.Map{
+			"id": e.Engine.ID, "name": e.Engine.Name,
+			"alias": e.Engine.Alias, "galgameCount": 0,
+		}
+	}
+
+	// Tags
+	tags := make([]fiber.Map, len(g.Tag))
+	for i, t := range g.Tag {
+		tags[i] = fiber.Map{
+			"id": t.Tag.ID, "name": t.Tag.Name,
+			"category": t.Tag.Category, "galgameCount": 0,
+			"spoilerLevel": t.SpoilerLevel,
+		}
+	}
+
+	// Series
+	var series any
+	if g.SeriesID != nil {
+		seriesData, seriesErr := h.galgameClient.Get(
+			c.Context(),
+			fmt.Sprintf("/series/%d", *g.SeriesID),
+			nil,
+		)
+		if seriesErr == nil {
+			type seriesGalgame struct {
+				NameEnUs     string `json:"name_en_us"`
+				NameJaJp     string `json:"name_ja_jp"`
+				NameZhCn     string `json:"name_zh_cn"`
+				NameZhTw     string `json:"name_zh_tw"`
+				Banner       string `json:"banner"`
+				ContentLimit string `json:"content_limit"`
+			}
+			var s struct {
+				ID          int             `json:"id"`
+				Name        string          `json:"name"`
+				Description string          `json:"description"`
+				Galgame     []seriesGalgame `json:"galgame"`
+				Created     string          `json:"created"`
+				Updated     string          `json:"updated"`
+			}
+			if err := json.Unmarshal(seriesData, &s); err == nil {
+				isNSFW := false
+				samples := make([]fiber.Map, 0, min(len(s.Galgame), 5))
+				for j, sg := range s.Galgame {
+					if sg.ContentLimit == "nsfw" {
+						isNSFW = true
+					}
+					if j < 5 {
+						samples = append(samples, fiber.Map{
+							"name": fiber.Map{
+								"en-us": sg.NameEnUs, "ja-jp": sg.NameJaJp,
+								"zh-cn": sg.NameZhCn, "zh-tw": sg.NameZhTw,
+							},
+							"banner": sg.Banner,
+						})
+					}
+				}
+				series = fiber.Map{
+					"id": s.ID, "name": s.Name,
+					"description":   s.Description,
+					"isNSFW":        isNSFW,
+					"sampleGalgame": samples,
+					"galgameCount":  len(s.Galgame),
+					"created":       s.Created,
+					"updated":       s.Updated,
+				}
+			}
+		}
+	}
+
+	// Platform/Language/Type from local galgame_resource
+	type resRow struct {
+		Platform string `gorm:"column:platform"`
+		Language string `gorm:"column:language"`
+		Type     string `gorm:"column:type"`
+	}
+	var resources []resRow
+	h.db.Table("galgame_resource").
+		Select("DISTINCT platform, language, type").
+		Where("galgame_id = ?", gidInt).Scan(&resources)
+
+	platformSet := map[string]bool{}
+	languageSet := map[string]bool{}
+	typeSet := map[string]bool{}
+	for _, r := range resources {
+		if r.Platform != "" {
+			platformSet[r.Platform] = true
+		}
+		if r.Language != "" {
+			languageSet[r.Language] = true
+		}
+		if r.Type != "" {
+			typeSet[r.Type] = true
+		}
+	}
+
+	// Ratings from local DB
+	type ratingRow struct {
+		ID           int    `gorm:"column:id"`
+		Recommend    string `gorm:"column:recommend"`
+		Overall      int    `gorm:"column:overall"`
+		View         int    `gorm:"column:view"`
+		GalgameType  string `gorm:"column:galgame_type"`
+		PlayStatus   string `gorm:"column:play_status"`
+		ShortSummary string `gorm:"column:short_summary"`
+		SpoilerLevel string `gorm:"column:spoiler_level"`
+		Art, Story, Music, Character       int
+		Route, System, Voice, ReplayValue  int
+		LikeCount    int    `gorm:"column:like_count"`
+		Created      string `gorm:"column:created"`
+		Updated      string `gorm:"column:updated"`
+		UserID       int    `gorm:"column:user_id"`
+	}
+	var ratingRows []ratingRow
+	h.db.Table("galgame_rating").
+		Where("galgame_id = ?", gidInt).
+		Order("created DESC").
+		Scan(&ratingRows)
+
+	// Batch fetch rating users
+	ratingUserIDs := make([]int, len(ratingRows))
+	for i, r := range ratingRows {
+		ratingUserIDs[i] = r.UserID
+	}
+	var ratingUsers []userModel.UserBrief
+	if len(ratingUserIDs) > 0 {
+		h.db.Where("id IN ?", ratingUserIDs).Find(&ratingUsers)
+	}
+	ratingUserMap := make(map[int]userModel.UserBrief, len(ratingUsers))
+	for _, u := range ratingUsers {
+		ratingUserMap[u.ID] = u
+	}
+
+	// Check which ratings the current user liked
+	ratingIDs := make([]int, len(ratingRows))
+	for i, r := range ratingRows {
+		ratingIDs[i] = r.ID
+	}
+	likedRatingSet := map[int]bool{}
+	if userInfo != nil && len(ratingIDs) > 0 {
+		type likeRow struct {
+			GalgameRatingID int `gorm:"column:galgame_rating_id"`
+		}
+		var likes []likeRow
+		h.db.Table("galgame_rating_like").
+			Select("galgame_rating_id").
+			Where("user_id = ? AND galgame_rating_id IN ?", userInfo.UID, ratingIDs).
+			Scan(&likes)
+		for _, l := range likes {
+			likedRatingSet[l.GalgameRatingID] = true
+		}
+	}
+
+	ratings := make([]fiber.Map, len(ratingRows))
+	for i, r := range ratingRows {
+		ratings[i] = fiber.Map{
+			"id": r.ID, "user": ratingUserMap[r.UserID],
+			"recommend": r.Recommend, "overall": r.Overall, "view": r.View,
+			"galgameType": json.RawMessage(r.GalgameType),
+			"play_status": r.PlayStatus, "short_summary": r.ShortSummary,
+			"spoiler_level": r.SpoilerLevel,
+			"art": r.Art, "story": r.Story, "music": r.Music,
+			"character": r.Character, "route": r.Route, "system": r.System,
+			"voice": r.Voice, "replay_value": r.ReplayValue,
+			"likeCount": r.LikeCount, "isLiked": likedRatingSet[r.ID],
+			"galgameId": gidInt,
+			"created": r.Created, "updated": r.Updated,
+			"galgame": fiber.Map{
+				"id": g.ID, "contentLimit": g.ContentLimit,
+				"name": fiber.Map{
+					"en-us": g.NameEnUs, "ja-jp": g.NameJaJp,
+					"zh-cn": g.NameZhCn, "zh-tw": g.NameZhTw,
+				},
+			},
+		}
+	}
+
+	return response.OK(c, fiber.Map{
+		"id":     g.ID,
+		"vndbId": g.VndbID,
+		"user":   resolveUser(g.UserID),
+		"name": fiber.Map{
+			"en-us": g.NameEnUs, "ja-jp": g.NameJaJp,
+			"zh-cn": g.NameZhCn, "zh-tw": g.NameZhTw,
 		},
+		"banner":       g.Banner,
+		"introduction": introHTML,
+		"markdown": fiber.Map{
+			"en-us": g.IntroEnUs, "ja-jp": g.IntroJaJp,
+			"zh-cn": g.IntroZhCn, "zh-tw": g.IntroZhTw,
+		},
+		"contentLimit":       g.ContentLimit,
+		"resourceUpdateTime": g.ResourceUpdateTime,
+		"view":               local.View,
+		"originalLanguage":   g.OriginalLanguage,
+		"ageLimit":           g.AgeLimit,
+		"platform":           mapKeysStr(platformSet),
+		"language":           mapKeysStr(languageSet),
+		"type":               mapKeysStr(typeSet),
+		"contributor":        contributors,
+		"likeCount":          local.LikeCount,
+		"isLiked":            isLiked,
+		"favoriteCount":      local.FavoriteCount,
+		"isFavorited":        isFavorited,
+		"alias":              aliases,
+		"series":             series,
+		"engine":             engines,
+		"official":           officials,
+		"tag":                tags,
+		"ratings":            ratings,
+		"created":            g.Created,
+		"updated":            g.Updated,
 	})
+}
+
+func mapKeysStr(m map[string]bool) []string {
+	if m == nil {
+		return []string{}
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // ──────────────────────────────────────────
@@ -197,7 +542,7 @@ func (h *GalgameHandler) ToggleLike(c *fiber.Ctx) error {
 
 		if result.Error == gorm.ErrRecordNotFound {
 			tx.Create(&model.GalgameLike{UserID: user.UID, GalgameID: gid})
-			tx.Model(&model.GalgameStats{}).Where("galgame_id = ?", gid).
+			tx.Model(&model.GalgameLocal{}).Where("id = ?", gid).
 				Update("like_count", gorm.Expr("like_count + 1"))
 			if ownerID > 0 {
 				tx.Model(&userModel.User{}).Where("id = ?", ownerID).
@@ -206,7 +551,7 @@ func (h *GalgameHandler) ToggleLike(c *fiber.Ctx) error {
 			}
 		} else {
 			tx.Delete(&existing)
-			tx.Model(&model.GalgameStats{}).Where("galgame_id = ?", gid).
+			tx.Model(&model.GalgameLocal{}).Where("id = ?", gid).
 				Update("like_count", gorm.Expr("like_count - 1"))
 			if ownerID > 0 {
 				tx.Model(&userModel.User{}).Where("id = ?", ownerID).
@@ -235,11 +580,11 @@ func (h *GalgameHandler) ToggleFavorite(c *fiber.Ctx) error {
 
 		if result.Error == gorm.ErrRecordNotFound {
 			tx.Create(&model.GalgameFavorite{UserID: user.UID, GalgameID: gid})
-			tx.Model(&model.GalgameStats{}).Where("galgame_id = ?", gid).
+			tx.Model(&model.GalgameLocal{}).Where("id = ?", gid).
 				Update("favorite_count", gorm.Expr("favorite_count + 1"))
 		} else {
 			tx.Delete(&existing)
-			tx.Model(&model.GalgameStats{}).Where("galgame_id = ?", gid).
+			tx.Model(&model.GalgameLocal{}).Where("id = ?", gid).
 				Update("favorite_count", gorm.Expr("favorite_count - 1"))
 		}
 		return nil
@@ -349,7 +694,7 @@ func (h *GalgameHandler) CreateComment(c *fiber.Ctx) error {
 
 	h.db.Transaction(func(tx *gorm.DB) error {
 		tx.Create(&comment)
-		tx.Model(&model.GalgameStats{}).Where("galgame_id = ?", gid).
+		tx.Model(&model.GalgameLocal{}).Where("id = ?", gid).
 			Update("comment_count", gorm.Expr("comment_count + 1"))
 
 		if req.TargetUserID != nil && *req.TargetUserID != user.UID {
@@ -425,7 +770,7 @@ func (h *GalgameHandler) DeleteComment(c *fiber.Ctx) error {
 	h.db.Transaction(func(tx *gorm.DB) error {
 		tx.Where("galgame_comment_id = ?", req.CommentID).Delete(&model.GalgameCommentLike{})
 		tx.Delete(&comment)
-		tx.Model(&model.GalgameStats{}).Where("galgame_id = ?", comment.GalgameID).
+		tx.Model(&model.GalgameLocal{}).Where("id = ?", comment.GalgameID).
 			Update("comment_count", gorm.Expr("comment_count - 1"))
 		return nil
 	})
@@ -772,7 +1117,7 @@ func (h *GalgameHandler) GetResourceList(c *fiber.Ctx) error {
 		Offset(offset).Limit(req.Limit).
 		Scan(&rows)
 
-	// Batch load galgame names
+	// Batch load galgame names from wiki
 	galgameIDs := make([]int, 0, len(rows))
 	userIDs := make([]int, 0, len(rows))
 	for _, r := range rows {
@@ -780,22 +1125,9 @@ func (h *GalgameHandler) GetResourceList(c *fiber.Ctx) error {
 		userIDs = append(userIDs, r.UserID)
 	}
 
-	type galgameName struct {
-		ID       int    `gorm:"column:id"`
-		NameEnUs string `gorm:"column:name_en_us"`
-		NameJaJp string `gorm:"column:name_ja_jp"`
-		NameZhCn string `gorm:"column:name_zh_cn"`
-		NameZhTw string `gorm:"column:name_zh_tw"`
-	}
-	var gNames []galgameName
-	if len(galgameIDs) > 0 {
-		h.db.Table("galgame").
-			Select("id, name_en_us, name_ja_jp, name_zh_cn, name_zh_tw").
-			Where("id IN ?", galgameIDs).Scan(&gNames)
-	}
-	gnMap := make(map[int]galgameName, len(gNames))
-	for _, g := range gNames {
-		gnMap[g.ID] = g
+	gnMap, _ := h.galgameClient.GetBatch(c.Context(), galgameIDs)
+	if gnMap == nil {
+		gnMap = map[int]client.GalgameBrief{}
 	}
 
 	var users []userModel.UserBrief
@@ -929,23 +1261,9 @@ func (h *GalgameHandler) GetAllRatings(c *fiber.Ctx) error {
 		userMap[u.ID] = u
 	}
 
-	type galgameBrief struct {
-		ID           int    `gorm:"column:id"`
-		NameEnUs     string `gorm:"column:name_en_us"`
-		NameJaJp     string `gorm:"column:name_ja_jp"`
-		NameZhCn     string `gorm:"column:name_zh_cn"`
-		NameZhTw     string `gorm:"column:name_zh_tw"`
-		ContentLimit string `gorm:"column:content_limit"`
-	}
-	var galgames []galgameBrief
-	if len(galgameIDs) > 0 {
-		h.db.Table("galgame").
-			Select("id, name_en_us, name_ja_jp, name_zh_cn, name_zh_tw, content_limit").
-			Where("id IN ?", galgameIDs).Scan(&galgames)
-	}
-	gMap := make(map[int]galgameBrief, len(galgames))
-	for _, g := range galgames {
-		gMap[g.ID] = g
+	gMap, _ := h.galgameClient.GetBatch(c.Context(), galgameIDs)
+	if gMap == nil {
+		gMap = map[int]client.GalgameBrief{}
 	}
 
 	ratingData := make([]fiber.Map, len(rows))

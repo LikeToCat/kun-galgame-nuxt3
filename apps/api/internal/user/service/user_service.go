@@ -161,12 +161,12 @@ func (s *UserService) UploadAvatar(ctx context.Context, uid int, avatarData []by
 	return "", errors.ErrBadRequest("头像上传功能正在迁移中")
 }
 
-func (s *UserService) GetUserGalgames(ctx context.Context, uid int, req *dto.UserGalgamesRequest) ([]dto.GalgameCard, int64, *errors.AppError) {
-	items, total, err := s.userRepo.FindUserGalgames(uid, req.Type, req.Page, req.Limit)
+func (s *UserService) GetUserGalgameIDs(ctx context.Context, uid int, req *dto.UserGalgamesRequest) ([]int, int64, *errors.AppError) {
+	ids, total, err := s.userRepo.FindUserGalgameIDs(uid, req.Type, req.Page, req.Limit)
 	if err != nil {
 		return nil, 0, errors.ErrInternal("获取用户 Galgame 列表失败")
 	}
-	return items, total, nil
+	return ids, total, nil
 }
 
 func (s *UserService) GetUserTopics(ctx context.Context, uid int, req *dto.UserTopicsRequest) ([]dto.UserTopic, int64, *errors.AppError) {

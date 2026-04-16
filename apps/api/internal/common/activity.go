@@ -2,9 +2,11 @@ package common
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	galgameClient "kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
 	"kun-galgame-api/pkg/utils"
@@ -14,11 +16,12 @@ import (
 )
 
 type ActivityHandler struct {
-	db *gorm.DB
+	db     *gorm.DB
+	wikiGC *galgameClient.GalgameClient
 }
 
-func NewActivityHandler(db *gorm.DB) *ActivityHandler {
-	return &ActivityHandler{db: db}
+func NewActivityHandler(db *gorm.DB, gc *galgameClient.GalgameClient) *ActivityHandler {
+	return &ActivityHandler{db: db, wikiGC: gc}
 }
 
 type activityItem struct {
@@ -71,10 +74,10 @@ var sources = map[string]activitySource{
 	"GALGAME_CREATION": {
 		typeStr: "GALGAME_CREATION",
 		query: `SELECT 'GALGAME_CREATION' AS type_str, t.id,
-			COALESCE(NULLIF(t.name_zh_cn,''), NULLIF(t.name_ja_jp,''),
-				NULLIF(t.name_en_us,''), t.name_zh_tw) AS content,
-			'/galgame/' || t.id AS link, t.created, t.user_id
-			FROM galgame t WHERE t.status != 1`,
+			'galgame#' || t.id AS content,
+			'/galgame/' || t.id AS link, t.created,
+			0 AS user_id
+			FROM galgame t`,
 	},
 	"GALGAME_COMMENT_CREATION": {
 		typeStr: "GALGAME_COMMENT_CREATION",
@@ -199,6 +202,7 @@ func (h *ActivityHandler) GetActivity(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal("查询活动数据失败"))
 	}
+	h.enrichGalgameItems(c, items)
 	return response.Paginated(c, items, total)
 }
 
@@ -267,7 +271,84 @@ func (h *ActivityHandler) getTimeline(
 		items[i].Actor.Avatar = r.Avatar
 	}
 
+	h.enrichGalgameItems(c, items)
 	return response.Paginated(c, items, total)
+}
+
+// enrichGalgameItems fills in galgame names for GALGAME_CREATION items
+// by batch-fetching from the wiki service.
+func (h *ActivityHandler) enrichGalgameItems(c *fiber.Ctx, items []activityItem) {
+	ids := make([]int, 0)
+	for _, it := range items {
+		if it.Type == "GALGAME_CREATION" && strings.HasPrefix(it.Content, "galgame#") {
+			if id, err := strconv.Atoi(it.Content[len("galgame#"):]); err == nil {
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	briefMap, appErr := h.wikiGC.GetBatch(c.Context(), ids)
+	if appErr != nil {
+		return // graceful: leave placeholder content
+	}
+
+	for i := range items {
+		if items[i].Type == "GALGAME_CREATION" && strings.HasPrefix(items[i].Content, "galgame#") {
+			if id, err := strconv.Atoi(items[i].Content[len("galgame#"):]); err == nil {
+				if b, ok := briefMap[id]; ok {
+					// Pick best available name
+					name := b.NameZhCn
+					if name == "" {
+						name = b.NameJaJp
+					}
+					if name == "" {
+						name = b.NameEnUs
+					}
+					if name == "" {
+						name = b.NameZhTw
+					}
+					items[i].Content = name
+					// Fill actor from wiki user_id
+					if items[i].Actor.ID == 0 {
+						items[i].Actor.ID = b.UserID
+					}
+				}
+			}
+		}
+	}
+
+	// Batch resolve user names for galgame creation items
+	userIDs := make([]int, 0)
+	for _, it := range items {
+		if it.Type == "GALGAME_CREATION" && it.Actor.Name == "" && it.Actor.ID > 0 {
+			userIDs = append(userIDs, it.Actor.ID)
+		}
+	}
+	if len(userIDs) > 0 {
+		type userRow struct {
+			ID     int    `gorm:"column:id"`
+			Name   string `gorm:"column:name"`
+			Avatar string `gorm:"column:avatar"`
+		}
+		var users []userRow
+		h.db.Table(`"user"`).Select("id, name, avatar").
+			Where("id IN ?", userIDs).Scan(&users)
+		userMap := make(map[int]userRow, len(users))
+		for _, u := range users {
+			userMap[u.ID] = u
+		}
+		for i := range items {
+			if items[i].Type == "GALGAME_CREATION" && items[i].Actor.Name == "" {
+				if u, ok := userMap[items[i].Actor.ID]; ok {
+					items[i].Actor.Name = u.Name
+					items[i].Actor.Avatar = u.Avatar
+				}
+			}
+		}
+	}
 }
 
 // buildUnionAll joins all source queries with UNION ALL.

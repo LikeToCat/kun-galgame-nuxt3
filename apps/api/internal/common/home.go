@@ -3,6 +3,7 @@ package common
 import (
 	"time"
 
+	galgameClient "kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
 
@@ -16,11 +17,12 @@ const (
 )
 
 type HomeHandler struct {
-	db *gorm.DB
+	db     *gorm.DB
+	wikiGC *galgameClient.GalgameClient
 }
 
-func NewHomeHandler(db *gorm.DB) *HomeHandler {
-	return &HomeHandler{db: db}
+func NewHomeHandler(db *gorm.DB, gc *galgameClient.GalgameClient) *HomeHandler {
+	return &HomeHandler{db: db, wikiGC: gc}
 }
 
 // ──────────────────────────────────────────
@@ -48,7 +50,7 @@ type HomeGalgame struct {
 	ContentLimit       string         `json:"contentLimit"`
 	View               int            `json:"view"`
 	LikeCount          int            `json:"likeCount"`
-	ResourceUpdateTime time.Time      `json:"resourceUpdateTime"`
+	ResourceUpdateTime string         `json:"resourceUpdateTime"`
 	Platform           []string       `json:"platform"`
 	Language           []string       `json:"language"`
 }
@@ -77,49 +79,6 @@ type HomeResponse struct {
 }
 
 // ──────────────────────────────────────────
-// Internal query result types
-// ──────────────────────────────────────────
-
-type galgameRow struct {
-	ID                 int       `gorm:"column:id"`
-	NameEnUS           string    `gorm:"column:name_en_us"`
-	NameJaJP           string    `gorm:"column:name_ja_jp"`
-	NameZhCN           string    `gorm:"column:name_zh_cn"`
-	NameZhTW           string    `gorm:"column:name_zh_tw"`
-	Banner             string    `gorm:"column:banner"`
-	ContentLimit       string    `gorm:"column:content_limit"`
-	View               int       `gorm:"column:view"`
-	LikeCount          int       `gorm:"column:like_count"`
-	ResourceUpdateTime time.Time `gorm:"column:resource_update_time"`
-	UserID             int       `gorm:"column:user_id"`
-	UserName           string    `gorm:"column:user_name"`
-	UserAvatar         string    `gorm:"column:user_avatar"`
-}
-
-type topicRow struct {
-	ID               int        `gorm:"column:id"`
-	Title            string     `gorm:"column:title"`
-	View             int        `gorm:"column:view"`
-	IsNSFW           bool       `gorm:"column:is_nsfw"`
-	Status           int        `gorm:"column:status"`
-	LikeCount        int        `gorm:"column:like_count"`
-	ReplyCount       int        `gorm:"column:reply_count"`
-	CommentCount     int        `gorm:"column:comment_count"`
-	BestAnswerID     *int       `gorm:"column:best_answer_id"`
-	UpvoteTime       *time.Time `gorm:"column:upvote_time"`
-	StatusUpdateTime time.Time  `gorm:"column:status_update_time"`
-	UserID           int        `gorm:"column:user_id"`
-	UserName         string     `gorm:"column:user_name"`
-	UserAvatar       string     `gorm:"column:user_avatar"`
-}
-
-type resourcePlatformLang struct {
-	GalgameID int    `gorm:"column:galgame_id"`
-	Platform  string `gorm:"column:platform"`
-	Language  string `gorm:"column:language"`
-}
-
-// ──────────────────────────────────────────
 // Handler
 // ──────────────────────────────────────────
 
@@ -129,7 +88,7 @@ func (h *HomeHandler) GetHome(c *fiber.Ctx) error {
 	nsfw := c.Cookies("kun_content_limit", "sfw")
 	isSFW := nsfw == "sfw"
 
-	galgames, err := h.getHomeGalgames(isSFW)
+	galgames, err := h.getHomeGalgames(c, isSFW)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal("获取首页 Galgame 失败"))
 	}
@@ -145,42 +104,70 @@ func (h *HomeHandler) GetHome(c *fiber.Ctx) error {
 	})
 }
 
-func (h *HomeHandler) getHomeGalgames(isSFW bool) ([]HomeGalgame, error) {
-	var rows []galgameRow
-
-	query := h.db.Table("galgame").
-		Select(`galgame.id, galgame.name_en_us, galgame.name_ja_jp, galgame.name_zh_cn, galgame.name_zh_tw,
-			galgame.banner, galgame.content_limit, galgame.view, galgame.like_count,
-			galgame.resource_update_time, galgame.user_id,
-			"user".name AS user_name, "user".avatar AS user_avatar`).
-		Joins(`JOIN "user" ON "user".id = galgame.user_id`).
-		Where("galgame.status != 1").
-		Order("galgame.resource_update_time DESC").
-		Limit(homeGalgameLimit)
-
-	if isSFW {
-		query = query.Where("galgame.content_limit = 'sfw'")
+func (h *HomeHandler) getHomeGalgames(c *fiber.Ctx, isSFW bool) ([]HomeGalgame, error) {
+	// Step 1: Get galgame IDs sorted by local interaction data
+	type localRow struct {
+		ID        int `gorm:"column:id"`
+		View      int `gorm:"column:view"`
+		LikeCount int `gorm:"column:like_count"`
 	}
-
-	if err := query.Find(&rows).Error; err != nil {
+	var localRows []localRow
+	query := h.db.Table("galgame").
+		Select("id, view, like_count").
+		Order("updated DESC").
+		Limit(homeGalgameLimit)
+	if err := query.Find(&localRows).Error; err != nil {
 		return nil, err
 	}
 
-	// Batch fetch platforms/languages for these galgames
-	galgameIDs := make([]int, len(rows))
-	for i, r := range rows {
+	if len(localRows) == 0 {
+		return []HomeGalgame{}, nil
+	}
+
+	// Step 2: Batch fetch metadata from wiki
+	galgameIDs := make([]int, len(localRows))
+	for i, r := range localRows {
 		galgameIDs[i] = r.ID
 	}
 
-	var resources []resourcePlatformLang
-	if len(galgameIDs) > 0 {
-		h.db.Table("galgame_resource").
-			Select("galgame_id, platform, language").
-			Where("galgame_id IN ?", galgameIDs).
-			Find(&resources)
+	briefMap, appErr := h.wikiGC.GetBatch(c.Context(), galgameIDs)
+	if appErr != nil {
+		return nil, appErr
 	}
 
-	// Group by galgame_id
+	// Step 3: Batch fetch users
+	userIDs := make([]int, 0, len(briefMap))
+	for _, b := range briefMap {
+		userIDs = append(userIDs, b.UserID)
+	}
+	type userRow struct {
+		ID     int    `gorm:"column:id"`
+		Name   string `gorm:"column:name"`
+		Avatar string `gorm:"column:avatar"`
+	}
+	var users []userRow
+	if len(userIDs) > 0 {
+		h.db.Table(`"user"`).
+			Select("id, name, avatar").
+			Where("id IN ?", userIDs).Scan(&users)
+	}
+	userMap := make(map[int]userRow, len(users))
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	// Step 4: Batch fetch platforms/languages from local galgame_resource
+	type resourcePL struct {
+		GalgameID int    `gorm:"column:galgame_id"`
+		Platform  string `gorm:"column:platform"`
+		Language  string `gorm:"column:language"`
+	}
+	var resources []resourcePL
+	h.db.Table("galgame_resource").
+		Select("galgame_id, platform, language").
+		Where("galgame_id IN ?", galgameIDs).
+		Find(&resources)
+
 	platformMap := map[int]map[string]bool{}
 	languageMap := map[int]map[string]bool{}
 	for _, r := range resources {
@@ -194,34 +181,56 @@ func (h *HomeHandler) getHomeGalgames(isSFW bool) ([]HomeGalgame, error) {
 		languageMap[r.GalgameID][r.Language] = true
 	}
 
-	result := make([]HomeGalgame, len(rows))
-	for i, r := range rows {
-		result[i] = HomeGalgame{
-			ID: r.ID,
-			Name: HomeLocaleName{
-				EnUS: r.NameEnUS,
-				JaJP: r.NameJaJP,
-				ZhCN: r.NameZhCN,
-				ZhTW: r.NameZhTW,
-			},
-			Banner:             r.Banner,
-			User:               HomeBriefUser{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
-			ContentLimit:       r.ContentLimit,
-			View:               r.View,
-			LikeCount:          r.LikeCount,
-			ResourceUpdateTime: r.ResourceUpdateTime,
-			Platform:           mapKeys(platformMap[r.ID]),
-			Language:           mapKeys(languageMap[r.ID]),
+	// Step 5: Assemble results in original order
+	result := make([]HomeGalgame, 0, len(localRows))
+	for _, lr := range localRows {
+		b, ok := briefMap[lr.ID]
+		if !ok {
+			continue // wiki doesn't have this galgame
 		}
+		if isSFW && b.ContentLimit != "sfw" {
+			continue
+		}
+		u := userMap[b.UserID]
+		result = append(result, HomeGalgame{
+			ID: lr.ID,
+			Name: HomeLocaleName{
+				EnUS: b.NameEnUs, JaJP: b.NameJaJp,
+				ZhCN: b.NameZhCn, ZhTW: b.NameZhTw,
+			},
+			Banner:             b.Banner,
+			User:               HomeBriefUser{ID: u.ID, Name: u.Name, Avatar: u.Avatar},
+			ContentLimit:       b.ContentLimit,
+			View:               lr.View,
+			LikeCount:          lr.LikeCount,
+			ResourceUpdateTime: b.ResourceUpdateTime,
+			Platform:           mapKeys(platformMap[lr.ID]),
+			Language:           mapKeys(languageMap[lr.ID]),
+		})
 	}
 
 	return result, nil
 }
 
 func (h *HomeHandler) getHomeTopics(isSFW bool) ([]HomeTopic, error) {
+	type topicRow struct {
+		ID               int        `gorm:"column:id"`
+		Title            string     `gorm:"column:title"`
+		View             int        `gorm:"column:view"`
+		IsNSFW           bool       `gorm:"column:is_nsfw"`
+		Status           int        `gorm:"column:status"`
+		LikeCount        int        `gorm:"column:like_count"`
+		ReplyCount       int        `gorm:"column:reply_count"`
+		CommentCount     int        `gorm:"column:comment_count"`
+		BestAnswerID     *int       `gorm:"column:best_answer_id"`
+		UpvoteTime       *time.Time `gorm:"column:upvote_time"`
+		StatusUpdateTime time.Time  `gorm:"column:status_update_time"`
+		UserID           int        `gorm:"column:user_id"`
+		UserName         string     `gorm:"column:user_name"`
+		UserAvatar       string     `gorm:"column:user_avatar"`
+	}
 	var rows []topicRow
 	threeMonthsAgo := time.Now().AddDate(0, -3, 0)
-
 	excludedSections := []string{"g-seeking", "g-other", "t-help"}
 
 	query := h.db.Table("topic").
@@ -248,12 +257,12 @@ func (h *HomeHandler) getHomeTopics(isSFW bool) ([]HomeTopic, error) {
 		return nil, err
 	}
 
-	// Fetch sections for these topics
 	topicIDs := make([]int, len(rows))
 	for i, r := range rows {
 		topicIDs[i] = r.ID
 	}
 
+	// Fetch sections
 	type sectionRow struct {
 		TopicID     int    `gorm:"column:topic_id"`
 		SectionName string `gorm:"column:name"`
@@ -271,7 +280,7 @@ func (h *HomeHandler) getHomeTopics(isSFW bool) ([]HomeTopic, error) {
 		sectionMap[s.TopicID] = append(sectionMap[s.TopicID], s.SectionName)
 	}
 
-	// Fetch tags for these topics
+	// Fetch tags
 	type tagRow struct {
 		TopicID int    `gorm:"column:topic_id"`
 		TagName string `gorm:"column:name"`

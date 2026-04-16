@@ -1,6 +1,7 @@
 package common
 
 import (
+	galgameClient "kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/pkg/response"
 	"kun-galgame-api/pkg/utils"
 
@@ -9,25 +10,15 @@ import (
 )
 
 type RankingHandler struct {
-	db *gorm.DB
+	db     *gorm.DB
+	wikiGC *galgameClient.GalgameClient
 }
 
-func NewRankingHandler(db *gorm.DB) *RankingHandler {
-	return &RankingHandler{db: db}
+func NewRankingHandler(db *gorm.DB, gc *galgameClient.GalgameClient) *RankingHandler {
+	return &RankingHandler{db: db, wikiGC: gc}
 }
 
-type rankingItem struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Avatar string `json:"avatar,omitempty"`
-	Banner string `json:"banner,omitempty"`
-	Title  string `json:"title,omitempty"`
-	Bio    string `json:"bio,omitempty"`
-	Value  int    `json:"value"`
-	Field  string `json:"sortField"`
-}
-
-// GetGalgameRanking returns galgame ranking by various fields.
+// GetGalgameRanking returns galgame ranking by local interaction fields.
 // GET /api/ranking/galgame
 func (h *RankingHandler) GetGalgameRanking(c *fiber.Ctx) error {
 	var req struct {
@@ -40,53 +31,72 @@ func (h *RankingHandler) GetGalgameRanking(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	type row struct {
-		ID      int    `json:"id"`
-		NameEnUS string `json:"name_en_us"`
-		NameJaJP string `json:"name_ja_jp"`
-		NameZhCN string `json:"name_zh_cn"`
-		NameZhTW string `json:"name_zh_tw"`
-		Banner  string `json:"banner"`
-		UserID  int
-		UserName   string
-		UserAvatar string
-		Value   int    `json:"value"`
+	// Step 1: Query local galgame table for IDs + sort value
+	type localRow struct {
+		ID    int `gorm:"column:id"`
+		Value int `gorm:"column:value"`
 	}
-
-	var rows []row
-	h.db.Table("galgame g").
-		Select(`g.id, g.name_en_us, g.name_ja_jp, g.name_zh_cn, g.name_zh_tw,
-			g.banner, g.user_id, u.name AS user_name, u.avatar AS user_avatar,
-			g.`+req.SortField+` AS value`).
-		Joins(`LEFT JOIN "user" u ON u.id = g.user_id`).
-		Where("g.status != 1").
-		Order("g." + req.SortField + " " + req.SortOrder).
-		Offset((req.Page - 1) * req.Limit).
+	var rows []localRow
+	h.db.Table("galgame").
+		Select("id, "+req.SortField+" AS value").
+		Order(req.SortField+" "+req.SortOrder).
+		Offset((req.Page-1)*req.Limit).
 		Limit(req.Limit).
-		Find(&rows)
+		Scan(&rows)
 
-	type resultItem struct {
-		ID     int               `json:"id"`
-		Name   map[string]string `json:"name"`
-		User   map[string]any    `json:"user"`
-		Banner string            `json:"banner"`
-		Value  int               `json:"value"`
-		Field  string            `json:"sortField"`
+	if len(rows) == 0 {
+		return response.OK(c, []fiber.Map{})
 	}
 
-	items := make([]resultItem, len(rows))
+	// Step 2: Batch fetch metadata from wiki
+	ids := make([]int, len(rows))
 	for i, r := range rows {
-		items[i] = resultItem{
-			ID: r.ID,
-			Name: map[string]string{
-				"en-us": r.NameEnUS, "ja-jp": r.NameJaJP,
-				"zh-cn": r.NameZhCN, "zh-tw": r.NameZhTW,
-			},
-			User:   map[string]any{"id": r.UserID, "name": r.UserName, "avatar": r.UserAvatar},
-			Banner: r.Banner,
-			Value:  r.Value,
-			Field:  req.SortField,
+		ids[i] = r.ID
+	}
+	briefMap, appErr := h.wikiGC.GetBatch(c.Context(), ids)
+	if appErr != nil {
+		return response.OK(c, []fiber.Map{})
+	}
+
+	// Step 3: Batch fetch users
+	userIDs := make([]int, 0, len(briefMap))
+	for _, b := range briefMap {
+		userIDs = append(userIDs, b.UserID)
+	}
+	type userRow struct {
+		ID     int    `gorm:"column:id"`
+		Name   string `gorm:"column:name"`
+		Avatar string `gorm:"column:avatar"`
+	}
+	var users []userRow
+	if len(userIDs) > 0 {
+		h.db.Table(`"user"`).Select("id, name, avatar").
+			Where("id IN ?", userIDs).Scan(&users)
+	}
+	userMap := make(map[int]userRow, len(users))
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	// Step 4: Assemble
+	items := make([]fiber.Map, 0, len(rows))
+	for _, r := range rows {
+		b, ok := briefMap[r.ID]
+		if !ok {
+			continue
 		}
+		u := userMap[b.UserID]
+		items = append(items, fiber.Map{
+			"id": r.ID,
+			"name": fiber.Map{
+				"en-us": b.NameEnUs, "ja-jp": b.NameJaJp,
+				"zh-cn": b.NameZhCn, "zh-tw": b.NameZhTw,
+			},
+			"user":      fiber.Map{"id": u.ID, "name": u.Name, "avatar": u.Avatar},
+			"banner":    b.Banner,
+			"value":     r.Value,
+			"sortField": req.SortField,
+		})
 	}
 
 	return response.OK(c, items)
@@ -106,42 +116,28 @@ func (h *RankingHandler) GetTopicRanking(c *fiber.Ctx) error {
 	}
 
 	type row struct {
-		ID         int
-		Title      string
-		UserID     int
-		UserName   string
-		UserAvatar string
-		Value      int
+		ID, UserID, Value          int
+		Title, UserName, UserAvatar string
 	}
-
 	var rows []row
 	h.db.Table("topic t").
 		Select(`t.id, t.title, t.user_id, u.name AS user_name, u.avatar AS user_avatar,
 			t.`+req.SortField+` AS value`).
 		Joins(`LEFT JOIN "user" u ON u.id = t.user_id`).
 		Where("t.status != 1").
-		Order("t." + req.SortField + " " + req.SortOrder).
-		Offset((req.Page - 1) * req.Limit).
-		Limit(req.Limit).
+		Order("t."+req.SortField+" "+req.SortOrder).
+		Offset((req.Page-1)*req.Limit).Limit(req.Limit).
 		Find(&rows)
 
-	type resultItem struct {
-		ID    int            `json:"id"`
-		Title string         `json:"title"`
-		User  map[string]any `json:"user"`
-		Value int            `json:"value"`
-		Field string         `json:"sortField"`
-	}
-
-	items := make([]resultItem, len(rows))
+	items := make([]fiber.Map, len(rows))
 	for i, r := range rows {
-		items[i] = resultItem{
-			ID: r.ID, Title: r.Title,
-			User:  map[string]any{"id": r.UserID, "name": r.UserName, "avatar": r.UserAvatar},
-			Value: r.Value, Field: req.SortField,
+		items[i] = fiber.Map{
+			"id": r.ID, "title": r.Title,
+			"user":      fiber.Map{"id": r.UserID, "name": r.UserName, "avatar": r.UserAvatar},
+			"value":     r.Value,
+			"sortField": req.SortField,
 		}
 	}
-
 	return response.OK(c, items)
 }
 
@@ -165,14 +161,12 @@ func (h *RankingHandler) GetUserRanking(c *fiber.Ctx) error {
 		Bio    string `json:"bio"`
 		Value  int    `json:"value"`
 	}
-
 	var rows []row
 	h.db.Table(`"user"`).
 		Select(`id, name, avatar, bio, `+req.SortField+` AS value`).
 		Where("status != 1").
-		Order(req.SortField + " " + req.SortOrder).
-		Offset((req.Page - 1) * req.Limit).
-		Limit(req.Limit).
+		Order(req.SortField+" "+req.SortOrder).
+		Offset((req.Page-1)*req.Limit).Limit(req.Limit).
 		Find(&rows)
 
 	return response.OK(c, rows)

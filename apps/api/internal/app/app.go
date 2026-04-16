@@ -90,25 +90,28 @@ func New(cfg *config.Config) *App {
 	commentSvc := topicService.NewCommentService(replyRepository, rdb)
 	pollSvc := topicService.NewPollService(pollRepository, topicRepository, rdb)
 
+	// Galgame wiki client (shared across handlers)
+	gc := galgameClient.NewGalgameClient(cfg.GalgameWiki.BaseURL)
+
 	// Handlers
 	app := &App{
 		DB: db, Redis: rdb, S3: s3Client, Mailer: mailer, Config: cfg,
 		OAuthHandler:   handler.NewOAuthHandler(authService, cfg.Server.Mode == "prod"),
-		UserHandler:    handler.NewUserHandler(userService),
-		HomeHandler:    common.NewHomeHandler(db),
+		UserHandler:    handler.NewUserHandler(userService, gc),
+		HomeHandler:    common.NewHomeHandler(db, gc),
 		TopicHandler:   topicHandler.NewTopicHandler(topicSvc),
 		ReplyHandler:   topicHandler.NewReplyHandler(replySvc, commentSvc),
 		PollHandler:    topicHandler.NewPollHandler(pollSvc),
 		MessageHandler: msgHandler.NewMessageHandler(messageSvc),
 		AdminHandler:   adminHandler.NewAdminHandler(db, rdb),
-		RankingHandler: common.NewRankingHandler(db),
+		RankingHandler: common.NewRankingHandler(db, gc),
 		SectionHandler: common.NewSectionHandler(db),
 		DocHandler:     docHandler.NewDocHandler(db),
 		WebsiteHandler: websiteHandler.NewWebsiteHandler(db),
 		UpdateHandler:    common.NewUpdateHandler(db),
 		MiscHandler:      common.NewMiscHandler(db),
-		GalgameHandler:   galgameHandler.NewGalgameHandler(db, galgameClient.NewGalgameClient(cfg.GalgameWiki.BaseURL)),
-		ActivityHandler:  common.NewActivityHandler(db),
+		GalgameHandler:   galgameHandler.NewGalgameHandler(db, gc),
+		ActivityHandler:  common.NewActivityHandler(db, gc),
 		ImageHandler:     common.NewImageHandler(db, s3Client),
 		SearchHandler:    common.NewSearchHandler(db),
 		ToolsetHandler:   toolsetHandler.NewToolsetHandler(db, s3Client, rdb),

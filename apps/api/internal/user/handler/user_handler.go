@@ -3,6 +3,7 @@ package handler
 import (
 	"strconv"
 
+	galgameClient "kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/internal/middleware"
 	"kun-galgame-api/internal/user/dto"
 	"kun-galgame-api/internal/user/service"
@@ -15,10 +16,11 @@ import (
 
 type UserHandler struct {
 	userService *service.UserService
+	wikiGC      *galgameClient.GalgameClient
 }
 
-func NewUserHandler(userService *service.UserService) *UserHandler {
-	return &UserHandler{userService: userService}
+func NewUserHandler(userService *service.UserService, gc *galgameClient.GalgameClient) *UserHandler {
+	return &UserHandler{userService: userService, wikiGC: gc}
 }
 
 // GetProfile returns a user's public profile.
@@ -190,9 +192,36 @@ func (h *UserHandler) GetUserGalgames(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	items, total, appErr := h.userService.GetUserGalgames(c.Context(), uid, &req)
+	ids, total, appErr := h.userService.GetUserGalgameIDs(c.Context(), uid, &req)
 	if appErr != nil {
 		return response.Error(c, appErr)
+	}
+
+	if len(ids) == 0 {
+		return response.Paginated(c, []fiber.Map{}, total)
+	}
+
+	briefMap, wikiErr := h.wikiGC.GetBatch(c.Context(), ids)
+	if wikiErr != nil {
+		return response.Paginated(c, []fiber.Map{}, total)
+	}
+
+	items := make([]fiber.Map, 0, len(ids))
+	for _, id := range ids {
+		b, ok := briefMap[id]
+		if !ok {
+			continue
+		}
+		items = append(items, fiber.Map{
+			"id":     b.ID,
+			"vndbId": b.VndbID,
+			"name": fiber.Map{
+				"en-us": b.NameEnUs, "ja-jp": b.NameJaJp,
+				"zh-cn": b.NameZhCn, "zh-tw": b.NameZhTw,
+			},
+			"banner":       b.Banner,
+			"contentLimit": b.ContentLimit,
+		})
 	}
 
 	return response.Paginated(c, items, total)

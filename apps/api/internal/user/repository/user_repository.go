@@ -167,17 +167,13 @@ func (r *UserRepository) CountUnreadChatMessages(uid int) (int64, error) {
 // User galgames / topics queries
 // ──────────────────────────────────────────
 
-func (r *UserRepository) FindUserGalgames(uid int, queryType string, page, limit int) ([]dto.GalgameCard, int64, error) {
+func (r *UserRepository) FindUserGalgameIDs(uid int, queryType string, page, limit int) ([]int, int64, error) {
 	offset := (page - 1) * limit
-	var results []dto.GalgameCard
 	var total int64
 
-	baseQuery := r.db.Table("galgame").
-		Select("galgame.id, galgame.vndb_id, galgame.name_en_us, galgame.name_ja_jp, galgame.name_zh_cn, galgame.name_zh_tw, galgame.banner, galgame.content_limit, galgame.created")
+	baseQuery := r.db.Table("galgame").Select("galgame.id")
 
 	switch queryType {
-	case "galgame":
-		baseQuery = baseQuery.Where("galgame.user_id = ?", uid)
 	case "galgame_like":
 		baseQuery = baseQuery.
 			Joins("JOIN galgame_like ON galgame_like.galgame_id = galgame.id").
@@ -187,16 +183,30 @@ func (r *UserRepository) FindUserGalgames(uid int, queryType string, page, limit
 			Joins("JOIN galgame_favorite ON galgame_favorite.galgame_id = galgame.id").
 			Where("galgame_favorite.user_id = ?", uid)
 	case "galgame_contribute":
-		baseQuery = baseQuery.
-			Joins("JOIN galgame_contributor ON galgame_contributor.galgame_id = galgame.id").
-			Where("galgame_contributor.user_id = ?", uid)
+		// contributor table was moved to wiki; query not supported locally
+		return []int{}, 0, nil
 	default:
-		baseQuery = baseQuery.Where("galgame.user_id = ?", uid)
+		// "galgame" — user_id no longer on local table; not supported
+		return []int{}, 0, nil
 	}
 
 	baseQuery.Count(&total)
-	err := baseQuery.Order("galgame.created DESC").Offset(offset).Limit(limit).Find(&results).Error
-	return results, total, err
+
+	type idRow struct {
+		ID int `gorm:"column:id"`
+	}
+	var rows []idRow
+	err := baseQuery.Order("galgame.created DESC").
+		Offset(offset).Limit(limit).Scan(&rows).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	ids := make([]int, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	return ids, total, nil
 }
 
 func (r *UserRepository) FindUserTopics(uid int, queryType string, page, limit int) ([]dto.UserTopic, int64, error) {

@@ -85,6 +85,64 @@ func (c *GalgameClient) mutateWithToken(ctx context.Context, method, path, token
 	return c.doRequest(req)
 }
 
+// GalgameBrief is the lightweight metadata returned by /galgame/batch.
+type GalgameBrief struct {
+	ID                 int    `json:"id"`
+	VndbID             string `json:"vndb_id"`
+	NameEnUs           string `json:"name_en_us"`
+	NameJaJp           string `json:"name_ja_jp"`
+	NameZhCn           string `json:"name_zh_cn"`
+	NameZhTw           string `json:"name_zh_tw"`
+	Banner             string `json:"banner"`
+	ContentLimit       string `json:"content_limit"`
+	UserID             int    `json:"user_id"`
+	ResourceUpdateTime string `json:"resource_update_time"`
+	OriginalLanguage   string `json:"original_language"`
+	AgeLimit           string `json:"age_limit"`
+}
+
+// GetBatch fetches lightweight galgame info for multiple IDs.
+// Returns a map[galgameID] -> GalgameBrief for easy lookup.
+func (c *GalgameClient) GetBatch(ctx context.Context, ids []int) (map[int]GalgameBrief, *errors.AppError) {
+	if len(ids) == 0 {
+		return map[int]GalgameBrief{}, nil
+	}
+
+	// Build comma-separated IDs
+	idStrs := make([]string, len(ids))
+	for i, id := range ids {
+		idStrs[i] = fmt.Sprintf("%d", id)
+	}
+	query := url.Values{"ids": {joinStrings(idStrs, ",")}}
+
+	data, appErr := c.Get(ctx, "/galgame/batch", query)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var briefs []GalgameBrief
+	if err := json.Unmarshal(data, &briefs); err != nil {
+		return nil, errors.ErrInternal("解析 Wiki 批量响应失败")
+	}
+
+	result := make(map[int]GalgameBrief, len(briefs))
+	for _, b := range briefs {
+		result[b.ID] = b
+	}
+	return result, nil
+}
+
+func joinStrings(s []string, sep string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	result := s[0]
+	for _, v := range s[1:] {
+		result += sep + v
+	}
+	return result
+}
+
 func (c *GalgameClient) doRequest(req *http.Request) (json.RawMessage, *errors.AppError) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
