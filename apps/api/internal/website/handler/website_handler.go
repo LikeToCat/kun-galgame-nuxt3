@@ -170,22 +170,95 @@ func (h *WebsiteHandler) GetWebsiteDetail(c *fiber.Ctx) error {
 	go h.db.Model(&model.GalgameWebsite{}).Where("id = ?", website.ID).
 		Update("view", gorm.Expr("view + 1"))
 
-	// Fetch interactions
+	// Category
+	var category model.GalgameWebsiteCategory
+	h.db.Where("id = ?", website.CategoryID).First(&category)
+
+	// Tags
+	var tagRels []model.GalgameWebsiteTagRelation
+	h.db.Where("galgame_website_id = ?", website.ID).
+		Preload("Tag").Find(&tagRels)
+	tags := make([]fiber.Map, len(tagRels))
+	for i, tr := range tagRels {
+		tags[i] = fiber.Map{
+			"id":          tr.Tag.ID,
+			"name":        tr.Tag.Name,
+			"description": tr.Tag.Description,
+			"label":       tr.Tag.Label,
+			"level":       tr.Tag.Level,
+		}
+	}
+
+	// Comments with user
+	type commentRow struct {
+		ID         int    `gorm:"column:id"`
+		Content    string `gorm:"column:content"`
+		UserID     int    `gorm:"column:user_id"`
+		UserName   string `gorm:"column:user_name"`
+		UserAvatar string `gorm:"column:user_avatar"`
+		Created    string `gorm:"column:created"`
+		Updated    string `gorm:"column:updated"`
+	}
+	var comments []commentRow
+	h.db.Table("galgame_website_comment c").
+		Select(`c.id, c.content, c.user_id,
+			u.name AS user_name, u.avatar AS user_avatar,
+			c.created, c.updated`).
+		Joins(`LEFT JOIN "user" u ON u.id = c.user_id`).
+		Where("c.website_id = ?", website.ID).
+		Order("c.created DESC").
+		Scan(&comments)
+
+	commentList := make([]fiber.Map, len(comments))
+	for i, cm := range comments {
+		commentList[i] = fiber.Map{
+			"id":      cm.ID,
+			"content": cm.Content,
+			"user": fiber.Map{
+				"id": cm.UserID, "name": cm.UserName, "avatar": cm.UserAvatar,
+			},
+			"created": cm.Created,
+			"updated": cm.Updated,
+		}
+	}
+
+	// Interactions
 	userInfo := middleware.GetUser(c)
-	isLiked := false
-	isFavorited := false
+	isLiked, isFavorited := false, false
 	if userInfo != nil {
-		var likeCount, favCount int64
-		h.db.Model(&model.GalgameWebsiteLike{}).Where("user_id = ? AND website_id = ?", userInfo.UID, website.ID).Count(&likeCount)
-		h.db.Model(&model.GalgameWebsiteFavorite{}).Where("user_id = ? AND website_id = ?", userInfo.UID, website.ID).Count(&favCount)
-		isLiked = likeCount > 0
-		isFavorited = favCount > 0
+		var lc, fc int64
+		h.db.Model(&model.GalgameWebsiteLike{}).
+			Where("user_id = ? AND website_id = ?", userInfo.UID, website.ID).Count(&lc)
+		h.db.Model(&model.GalgameWebsiteFavorite{}).
+			Where("user_id = ? AND website_id = ?", userInfo.UID, website.ID).Count(&fc)
+		isLiked, isFavorited = lc > 0, fc > 0
 	}
 
 	return response.OK(c, fiber.Map{
-		"website":     website,
-		"isLiked":     isLiked,
-		"isFavorited": isFavorited,
+		"id":          website.ID,
+		"name":        website.Name,
+		"url":         website.URL,
+		"description": website.Description,
+		"icon":        website.Icon,
+		"view":        website.View,
+		"language":    website.Language,
+		"ageLimit":    website.AgeLimit,
+		"category": fiber.Map{
+			"id":          category.ID,
+			"name":        category.Name,
+			"label":       category.Label,
+			"description": category.Description,
+		},
+		"tags":          tags,
+		"likeCount":     website.LikeCount,
+		"isLiked":       isLiked,
+		"favoriteCount": website.FavoriteCount,
+		"isFavorited":   isFavorited,
+		"domain":        website.Domain,
+		"createTime":    website.CreateTime,
+		"comment":       commentList,
+		"created":       website.CreatedAt,
+		"updated":       website.UpdatedAt,
 	})
 }
 
@@ -318,6 +391,84 @@ func (h *WebsiteHandler) ToggleFavorite(c *fiber.Ctx) error {
 	})
 
 	return response.OKMessage(c, "操作成功")
+}
+
+// GetComments returns nested comments for a website.
+// GET /api/website/:domain/comment
+func (h *WebsiteHandler) GetComments(c *fiber.Ctx) error {
+	var req struct {
+		WebsiteID int `query:"websiteId" validate:"required,min=1"`
+	}
+	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	type commentRow struct {
+		ID       int     `gorm:"column:id"`
+		Content  string  `gorm:"column:content"`
+		ParentID *int    `gorm:"column:parent_id"`
+		UserID   int     `gorm:"column:user_id"`
+		UserName string  `gorm:"column:user_name"`
+		UserAvt  string  `gorm:"column:user_avatar"`
+		Created  string  `gorm:"column:created"`
+		Edited   *string `gorm:"column:edited"`
+	}
+	var rows []commentRow
+	h.db.Table("galgame_website_comment c").
+		Select(`c.id, c.content, c.parent_id, c.user_id,
+			u.name AS user_name, u.avatar AS user_avatar,
+			c.created, c.edited`).
+		Joins(`LEFT JOIN "user" u ON u.id = c.user_id`).
+		Where("c.website_id = ?", req.WebsiteID).
+		Order("c.created DESC").
+		Scan(&rows)
+
+	// Build flat map then nest
+	type comment struct {
+		ID        int        `json:"id"`
+		Content   string     `json:"content"`
+		ParentID  *int       `json:"parentId"`
+		UserID    int        `json:"userId"`
+		WebsiteID int        `json:"websiteId"`
+		Created   string     `json:"created"`
+		Edited    *string    `json:"edited"`
+		Reply     []*comment `json:"reply"`
+		User      fiber.Map  `json:"user"`
+		TargetUser any       `json:"targetUser"`
+	}
+
+	flat := make([]*comment, len(rows))
+	idMap := map[int]*comment{}
+	for i, r := range rows {
+		cm := &comment{
+			ID: r.ID, Content: r.Content, ParentID: r.ParentID,
+			UserID: r.UserID, WebsiteID: req.WebsiteID,
+			Created: r.Created, Edited: r.Edited,
+			Reply: []*comment{},
+			User: fiber.Map{"id": r.UserID, "name": r.UserName, "avatar": r.UserAvt},
+			TargetUser: nil,
+		}
+		flat[i] = cm
+		idMap[r.ID] = cm
+	}
+
+	var nested []*comment
+	for _, cm := range flat {
+		if cm.ParentID != nil {
+			if parent, ok := idMap[*cm.ParentID]; ok {
+				cm.TargetUser = parent.User
+				parent.Reply = append(parent.Reply, cm)
+				continue
+			}
+		}
+		nested = append(nested, cm)
+	}
+
+	if nested == nil {
+		nested = []*comment{}
+	}
+
+	return response.OK(c, nested)
 }
 
 // CreateComment creates a website comment.

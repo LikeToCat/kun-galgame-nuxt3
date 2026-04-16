@@ -147,6 +147,7 @@ func (a *App) setupRoutes() {
 
 	// Website (optional auth for like/favorite status)
 	optAuth.Get("/website", a.WebsiteHandler.GetWebsites)
+	optAuth.Get("/website/:domain/comment", a.WebsiteHandler.GetComments)
 	optAuth.Get("/website/:domain", a.WebsiteHandler.GetWebsiteDetail)
 
 	// Toolset (optional auth for practicality "mine" field)
