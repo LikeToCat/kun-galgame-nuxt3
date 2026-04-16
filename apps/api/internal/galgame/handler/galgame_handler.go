@@ -523,11 +523,61 @@ func truncate(s string, maxLen int) string {
 	return string(runes[:maxLen])
 }
 
+// GetList wraps the wiki /galgame list, renaming "items" → "galgames"
+// to match the frontend contract.
+// GET /api/galgame
+func (h *GalgameHandler) GetList(c *fiber.Ctx) error {
+	query := make(url.Values)
+	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		query.Set(string(key), string(value))
+	})
+
+	data, appErr := h.galgameClient.Get(c.Context(), "/galgame", query)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	var parsed struct {
+		Items json.RawMessage `json:"items"`
+		Total int64           `json:"total"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return response.Error(c, errors.ErrInternal("解析 Wiki 响应失败"))
+	}
+
+	return c.JSON(fiber.Map{
+		"code":    0,
+		"message": "成功",
+		"data": fiber.Map{
+			"galgames": json.RawMessage(parsed.Items),
+			"total":    parsed.Total,
+		},
+	})
+}
+
+// toWikiPath converts the Fiber request path to the wiki service path.
+// It strips the "/api" prefix and translates frontend route names
+// (e.g. "/galgame-tag") to wiki route names (e.g. "/tag").
+func toWikiPath(path string) string {
+	// Strip /api prefix: "/api/galgame-tag/..." → "/galgame-tag/..."
+	wp := path[4:]
+	// Translate frontend prefixes to wiki prefixes
+	for _, prefix := range []string{
+		"/galgame-tag", "/galgame-official",
+		"/galgame-engine", "/galgame-series",
+		"/galgame-resource",
+	} {
+		wiki := "/" + prefix[len("/galgame-"):]
+		if wp == prefix || len(wp) > len(prefix) && wp[len(prefix)] == '/' {
+			return wiki + wp[len(prefix):]
+		}
+	}
+	return wp
+}
+
 // ProxyGet forwards a GET request to wiki service (for endpoints with no local side effects).
 func (h *GalgameHandler) ProxyGet(c *fiber.Ctx) error {
-	path := c.Path()
-	// Strip /api prefix to get wiki path
-	wikiPath := path[4:] // "/api/galgame/..." → "/galgame/..."
+	wikiPath := toWikiPath(c.Path())
 
 	query := make(url.Values)
 	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
@@ -542,7 +592,7 @@ func (h *GalgameHandler) ProxyGet(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"code": 0, "message": "成功", "data": data})
 }
 
-// ProxyPostWithToken forwards a POST/PUT/DELETE request with OAuth token.
+// ProxyWriteWithToken forwards a POST/PUT/DELETE request with OAuth token.
 func (h *GalgameHandler) ProxyWriteWithToken(method string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		_, appErr := middleware.MustGetUser(c)
@@ -555,7 +605,7 @@ func (h *GalgameHandler) ProxyWriteWithToken(method string) fiber.Handler {
 			return response.Error(c, errors.ErrBadRequest("缺少 OAuth 访问令牌"))
 		}
 
-		wikiPath := c.Path()[4:]
+		wikiPath := toWikiPath(c.Path())
 
 		var data json.RawMessage
 		switch method {
@@ -572,4 +622,112 @@ func (h *GalgameHandler) ProxyWriteWithToken(method string) fiber.Handler {
 
 		return c.JSON(fiber.Map{"code": 0, "message": "成功", "data": data})
 	}
+}
+
+// GetResourceList returns the latest galgame resources.
+// GET /api/galgame-resource
+func (h *GalgameHandler) GetResourceList(c *fiber.Ctx) error {
+	var req struct {
+		Page  int `query:"page" validate:"min=1"`
+		Limit int `query:"limit" validate:"min=1,max=50"`
+	}
+	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	type resourceRow struct {
+		ID        int    `gorm:"column:id"`
+		View      int    `gorm:"column:view"`
+		GalgameID int    `gorm:"column:galgame_id"`
+		UserID    int    `gorm:"column:user_id"`
+		Type      string `gorm:"column:type"`
+		Language  string `gorm:"column:language"`
+		Platform  string `gorm:"column:platform"`
+		Size      string `gorm:"column:size"`
+		Status    int    `gorm:"column:status"`
+		Download  int    `gorm:"column:download"`
+		LikeCount int    `gorm:"column:like_count"`
+		Note      string `gorm:"column:note"`
+		Created   string `gorm:"column:created"`
+		Edited    *string `gorm:"column:edited"`
+	}
+
+	var total int64
+	h.db.Table("galgame_resource").Count(&total)
+
+	offset := (req.Page - 1) * req.Limit
+	var rows []resourceRow
+	h.db.Table("galgame_resource").
+		Order("created DESC").
+		Offset(offset).Limit(req.Limit).
+		Scan(&rows)
+
+	// Batch load galgame names
+	galgameIDs := make([]int, 0, len(rows))
+	userIDs := make([]int, 0, len(rows))
+	for _, r := range rows {
+		galgameIDs = append(galgameIDs, r.GalgameID)
+		userIDs = append(userIDs, r.UserID)
+	}
+
+	type galgameName struct {
+		ID       int    `gorm:"column:id"`
+		NameEnUs string `gorm:"column:name_en_us"`
+		NameJaJp string `gorm:"column:name_ja_jp"`
+		NameZhCn string `gorm:"column:name_zh_cn"`
+		NameZhTw string `gorm:"column:name_zh_tw"`
+	}
+	var gNames []galgameName
+	if len(galgameIDs) > 0 {
+		h.db.Table("galgame").
+			Select("id, name_en_us, name_ja_jp, name_zh_cn, name_zh_tw").
+			Where("id IN ?", galgameIDs).Scan(&gNames)
+	}
+	gnMap := make(map[int]galgameName, len(gNames))
+	for _, g := range gNames {
+		gnMap[g.ID] = g
+	}
+
+	var users []userModel.UserBrief
+	if len(userIDs) > 0 {
+		h.db.Where("id IN ?", userIDs).Find(&users)
+	}
+	uMap := make(map[int]userModel.UserBrief, len(users))
+	for _, u := range users {
+		uMap[u.ID] = u
+	}
+
+	resources := make([]fiber.Map, 0, len(rows))
+	for _, r := range rows {
+		gn := gnMap[r.GalgameID]
+		resources = append(resources, fiber.Map{
+			"id":         r.ID,
+			"view":       r.View,
+			"galgameId":  r.GalgameID,
+			"user":       uMap[r.UserID],
+			"type":       r.Type,
+			"language":   r.Language,
+			"platform":   r.Platform,
+			"size":       r.Size,
+			"status":     r.Status,
+			"download":   r.Download,
+			"likeCount":  r.LikeCount,
+			"isLiked":    false,
+			"linkDomain": "",
+			"note":       r.Note,
+			"created":    r.Created,
+			"edited":     r.Edited,
+			"galgameName": fiber.Map{
+				"en-us": gn.NameEnUs,
+				"ja-jp": gn.NameJaJp,
+				"zh-cn": gn.NameZhCn,
+				"zh-tw": gn.NameZhTw,
+			},
+		})
+	}
+
+	return response.OK(c, fiber.Map{
+		"resources": resources,
+		"total":     total,
+	})
 }

@@ -24,12 +24,85 @@ func NewWebsiteHandler(db *gorm.DB) *WebsiteHandler {
 
 // ── Website CRUD ────────────────────────
 
-// GetWebsites returns all websites.
+// GetWebsites returns all websites as WebsiteCard[].
 // GET /api/website
 func (h *WebsiteHandler) GetWebsites(c *fiber.Ctx) error {
-	var websites []model.GalgameWebsite
-	h.db.Order("created DESC").Find(&websites)
-	return response.OK(c, websites)
+	type dbRow struct {
+		ID          int
+		Name        string
+		URL         string
+		Description string
+		Icon        string
+		AgeLimit    string
+		CategoryID  int
+	}
+	var rows []dbRow
+	h.db.Table("galgame_website").
+		Select("id, name, url, description, icon, age_limit, category_id").
+		Order("created DESC").
+		Scan(&rows)
+
+	// Batch load category names
+	catIDs := make([]int, 0, len(rows))
+	for _, r := range rows {
+		catIDs = append(catIDs, r.CategoryID)
+	}
+	var cats []struct {
+		ID   int
+		Name string
+	}
+	h.db.Table("galgame_website_category").
+		Select("id, name").
+		Where("id IN ?", catIDs).
+		Scan(&cats)
+	catMap := make(map[int]string, len(cats))
+	for _, c := range cats {
+		catMap[c.ID] = c.Name
+	}
+
+	// Batch load tag level sums per website
+	type tagSum struct {
+		WebsiteID int
+		Total     int
+	}
+	var tagSums []tagSum
+	h.db.Table("galgame_website_tag_relation r").
+		Select("r.galgame_website_id AS website_id, COALESCE(SUM(t.level), 0) AS total").
+		Joins("JOIN galgame_website_tag t ON t.id = r.galgame_website_tag_id").
+		Group("r.galgame_website_id").
+		Scan(&tagSums)
+	levelMap := make(map[int]int, len(tagSums))
+	for _, ts := range tagSums {
+		levelMap[ts.WebsiteID] = ts.Total
+	}
+
+	type card struct {
+		ID          int    `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Domain      string `json:"domain"`
+		AgeLimit    string `json:"ageLimit"`
+		Level       int    `json:"level"`
+		Icon        string `json:"icon"`
+		Price       int    `json:"price"`
+		Category    string `json:"category"`
+	}
+	cards := make([]card, len(rows))
+	for i, r := range rows {
+		lvl := levelMap[r.ID]
+		cards[i] = card{
+			ID:          r.ID,
+			Name:        r.Name,
+			Description: r.Description,
+			Domain:      r.URL,
+			AgeLimit:    r.AgeLimit,
+			Level:       lvl,
+			Icon:        r.Icon,
+			Price:       lvl,
+			Category:    catMap[r.CategoryID],
+		}
+	}
+	return response.OK(c, cards)
 }
 
 // CreateWebsite creates a new website entry.

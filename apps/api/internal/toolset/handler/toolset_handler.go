@@ -107,36 +107,88 @@ func (h *ToolsetHandler) GetList(c *fiber.Ctx) error {
 	offset := (req.Page - 1) * req.Limit
 	query.Order(sortField + " " + sortOrder).Offset(offset).Limit(req.Limit).Find(&toolsets)
 
-	// Compute practicality avg and download sum per item
-	type result struct {
-		Items []fiber.Map
+	// Batch load practicality averages
+	toolsetIDs := make([]int, len(toolsets))
+	for i, t := range toolsets {
+		toolsetIDs[i] = t.ID
 	}
+
+	type avgRow struct {
+		ToolsetID int
+		Avg       float64
+	}
+	var avgs []avgRow
+	h.db.Model(&model.GalgameToolsetPracticality{}).
+		Select("toolset_id, COALESCE(AVG(rate), 0) AS avg").
+		Where("toolset_id IN ?", toolsetIDs).
+		Group("toolset_id").Scan(&avgs)
+	avgMap := make(map[int]float64, len(avgs))
+	for _, a := range avgs {
+		avgMap[a.ToolsetID] = math.Round(a.Avg*100) / 100
+	}
+
+	// Batch load download sums
+	type dlRow struct {
+		ToolsetID int
+		Total     int
+	}
+	var dls []dlRow
+	h.db.Model(&model.GalgameToolsetResource{}).
+		Select("toolset_id, COALESCE(SUM(download), 0) AS total").
+		Where("toolset_id IN ?", toolsetIDs).
+		Group("toolset_id").Scan(&dls)
+	dlMap := make(map[int]int, len(dls))
+	for _, d := range dls {
+		dlMap[d.ToolsetID] = d.Total
+	}
+
+	// Batch load comment counts
+	type ccRow struct {
+		ToolsetID int
+		Count     int
+	}
+	var ccs []ccRow
+	h.db.Model(&model.GalgameToolsetComment{}).
+		Select("toolset_id, COUNT(*) AS count").
+		Where("toolset_id IN ?", toolsetIDs).
+		Group("toolset_id").Scan(&ccs)
+	ccMap := make(map[int]int, len(ccs))
+	for _, cc := range ccs {
+		ccMap[cc.ToolsetID] = cc.Count
+	}
+
+	// Batch load users
+	userIDs := make([]int, len(toolsets))
+	for i, t := range toolsets {
+		userIDs[i] = t.UserID
+	}
+	var users []userModel.UserBrief
+	h.db.Where("id IN ?", userIDs).Find(&users)
+	userMap := make(map[int]userModel.UserBrief, len(users))
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	// Build flat ToolsetCard items
 	items := make([]fiber.Map, 0, len(toolsets))
 	for _, t := range toolsets {
-		var avgRate float64
-		h.db.Model(&model.GalgameToolsetPracticality{}).
-			Where("toolset_id = ?", t.ID).
-			Select("COALESCE(AVG(rate), 0)").Scan(&avgRate)
-
-		var downloadSum int64
-		h.db.Model(&model.GalgameToolsetResource{}).
-			Where("toolset_id = ?", t.ID).
-			Select("COALESCE(SUM(download), 0)").Scan(&downloadSum)
-
-		// Aliases
-		var aliases []model.GalgameToolsetAlias
-		h.db.Where("toolset_id = ?", t.ID).Find(&aliases)
-
-		// User brief
-		var user userModel.UserBrief
-		h.db.Where("id = ?", t.UserID).First(&user)
-
+		var practicalityAvg any = avgMap[t.ID]
+		if avgMap[t.ID] == 0 {
+			practicalityAvg = nil
+		}
 		items = append(items, fiber.Map{
-			"toolset":          t,
-			"practicalityAvg":  math.Round(avgRate*100) / 100,
-			"downloadSum":      downloadSum,
-			"aliases":          aliases,
-			"user":             user,
+			"id":                   t.ID,
+			"name":                 t.Name,
+			"user":                 userMap[t.UserID],
+			"type":                 t.Type,
+			"platform":             t.Platform,
+			"language":             t.Language,
+			"version":              t.Version,
+			"view":                 t.View,
+			"download":             dlMap[t.ID],
+			"commentCount":         ccMap[t.ID],
+			"practicalityAvg":      practicalityAvg,
+			"resource_update_time": t.ResourceUpdateTime,
 		})
 	}
 

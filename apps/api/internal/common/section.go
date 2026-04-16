@@ -97,28 +97,75 @@ func (h *SectionHandler) GetSectionTopics(c *fiber.Ctx) error {
 // GetCategories returns topic category stats.
 // GET /api/category
 func (h *SectionHandler) GetCategories(c *fiber.Ctx) error {
-	type catStat struct {
-		Name       string `json:"name"`
-		TopicCount int64  `json:"topicCount"`
-		ViewCount  int64  `json:"viewCount"`
+	var req struct {
+		Category string `query:"category" validate:"required"`
+	}
+	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
 	}
 
-	categories := []string{"galgame", "technique", "others"}
-	stats := make([]catStat, len(categories))
+	type sectionRow struct {
+		SectionID   int    `gorm:"column:section_id"`
+		SectionName string `gorm:"column:section_name"`
+		TopicCount  int64  `gorm:"column:topic_count"`
+		ViewCount   int64  `gorm:"column:view_count"`
+	}
+	var rows []sectionRow
+	h.db.Raw(`
+		SELECT ts.id AS section_id, ts.name AS section_name,
+			COUNT(DISTINCT t.id) AS topic_count,
+			COALESCE(SUM(t.view), 0) AS view_count
+		FROM topic_section ts
+		JOIN topic_section_relation tsr ON tsr.topic_section_id = ts.id
+		JOIN topic t ON t.id = tsr.topic_id AND t.status != 1
+			AND t.category = ?
+		GROUP BY ts.id, ts.name
+		ORDER BY ts.id
+	`, req.Category).Scan(&rows)
 
-	for i, cat := range categories {
-		var topicCount, viewCount int64
-		h.db.Table("topic").
-			Where("category = ? AND status != 1", cat).
-			Count(&topicCount)
-		h.db.Table("topic").
-			Select("COALESCE(SUM(view), 0)").
-			Where("category = ? AND status != 1", cat).
-			Scan(&viewCount)
-		stats[i] = catStat{
-			Name:       cat,
-			TopicCount: topicCount,
-			ViewCount:  viewCount,
+	type latestTopic struct {
+		ID      int    `json:"id"`
+		Title   string `json:"title"`
+		Created string `json:"created"`
+	}
+	type sectionStat struct {
+		ID          int          `json:"id"`
+		Name        string       `json:"name"`
+		TopicCount  int64        `json:"topicCount"`
+		ViewCount   int64        `json:"viewCount"`
+		LatestTopic *latestTopic `json:"latestTopic"`
+	}
+
+	stats := make([]sectionStat, len(rows))
+	for i, r := range rows {
+		stats[i] = sectionStat{
+			ID:         r.SectionID,
+			Name:       r.SectionName,
+			TopicCount: r.TopicCount,
+			ViewCount:  r.ViewCount,
+		}
+
+		// Get latest topic for this section
+		type topicRow struct {
+			ID      int    `gorm:"column:id"`
+			Title   string `gorm:"column:title"`
+			Created string `gorm:"column:created"`
+		}
+		var latest topicRow
+		result := h.db.Raw(`
+			SELECT t.id, t.title, t.created
+			FROM topic t
+			JOIN topic_section_relation tsr ON tsr.topic_id = t.id
+			WHERE tsr.topic_section_id = ? AND t.status != 1
+				AND t.category = ?
+			ORDER BY t.created DESC LIMIT 1
+		`, r.SectionID, req.Category).Scan(&latest)
+		if result.RowsAffected > 0 {
+			stats[i].LatestTopic = &latestTopic{
+				ID:      latest.ID,
+				Title:   latest.Title,
+				Created: latest.Created,
+			}
 		}
 	}
 
