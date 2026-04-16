@@ -29,15 +29,46 @@ func (h *TopicHandler) GetList(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
+	if req.SortField == "" {
+		req.SortField = "status_update_time"
+	}
+	if req.SortOrder == "" {
+		req.SortOrder = "desc"
+	}
+
 	// TODO: read NSFW cookie
 	isNSFW := false
 
-	items, total, appErr := h.topicService.GetList(c.Context(), &req, isNSFW)
+	items, _, appErr := h.topicService.GetList(c.Context(), &req, isNSFW)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
 
-	return response.Paginated(c, items, total)
+	return response.OK(c, items)
+}
+
+// GetResourceList returns topics filtered to resource sections (g-seeking, g-other, t-help).
+// GET /api/resource
+func (h *TopicHandler) GetResourceList(c *fiber.Ctx) error {
+	var req dto.ListTopicsRequest
+	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	if req.SortField == "" {
+		req.SortField = "status_update_time"
+	}
+	if req.SortOrder == "" {
+		req.SortOrder = "desc"
+	}
+
+	isNSFW := false
+	items, _, appErr := h.topicService.GetResourceList(c.Context(), &req, isNSFW)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	return response.OK(c, items)
 }
 
 // GetDetail returns a single topic with all associated data.

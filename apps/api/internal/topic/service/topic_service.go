@@ -99,6 +99,64 @@ func (s *TopicService) GetList(
 	return cards, total, nil
 }
 
+func (s *TopicService) GetResourceList(
+	ctx context.Context,
+	req *dto.ListTopicsRequest,
+	isNSFW bool,
+) ([]dto.TopicCard, int64, *errors.AppError) {
+	rows, total, err := s.topicRepo.FindResourceList(
+		req.Page, req.Limit,
+		req.SortField, req.SortOrder, req.Category,
+		isNSFW,
+	)
+	if err != nil {
+		return nil, 0, errors.ErrInternal("获取资源话题列表失败")
+	}
+
+	topicIDs := make([]int, len(rows))
+	for i, r := range rows {
+		topicIDs[i] = r.ID
+	}
+
+	tagMap, _ := s.topicRepo.FindTagNamesByTopicIDs(topicIDs)
+	sectionMap, _ := s.topicRepo.FindSectionNamesByTopicIDs(topicIDs)
+
+	cards := make([]dto.TopicCard, len(rows))
+	for i, r := range rows {
+		tags := tagMap[r.ID]
+		if tags == nil {
+			tags = []string{}
+		}
+		sections := sectionMap[r.ID]
+		if sections == nil {
+			sections = []string{}
+		}
+
+		cards[i] = dto.TopicCard{
+			ID:    r.ID,
+			Title: r.Title,
+			View:  r.View,
+			Tags:  tags,
+			Sections: sections,
+			User: dto.KunUser{
+				ID:     r.UserID,
+				Name:   r.UserName,
+				Avatar: r.UserAvatar,
+			},
+			Status:           r.Status,
+			HasBestAnswer:    r.BestAnswerID != nil,
+			IsNSFW:           r.IsNSFW,
+			LikeCount:        r.LikeCount,
+			ReplyCount:       r.ReplyCount,
+			CommentCount:     r.CommentCount,
+			StatusUpdateTime: r.StatusUpdateTime,
+			UpvoteTime:       r.UpvoteTime,
+		}
+	}
+
+	return cards, total, nil
+}
+
 // ──────────────────────────────────────────
 // Detail
 // ──────────────────────────────────────────

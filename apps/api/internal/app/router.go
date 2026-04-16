@@ -78,6 +78,12 @@ func (a *App) setupRoutes() {
 	api.Get("/activity", a.ActivityHandler.GetActivity)
 	api.Get("/activity/timeline", a.ActivityHandler.GetTimeline)
 
+	// Galgame rating (public)
+	api.Get("/galgame-rating/all", a.GalgameHandler.GetAllRatings)
+
+	// Resource topics (public, same as topic but filtered to resource sections)
+	api.Get("/resource", a.TopicHandler.GetResourceList)
+
 	// Search (public)
 	api.Get("/search", a.SearchHandler.Search)
 
@@ -98,16 +104,16 @@ func (a *App) setupRoutes() {
 	api.Get("/galgame/:gid/links", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame/:gid/aliases", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame/:gid/contributors", a.GalgameHandler.ProxyGet)
-	api.Get("/galgame-tag", a.GalgameHandler.ProxyGet)
+	api.Get("/galgame-tag", a.GalgameHandler.GetTagList)
 	api.Get("/galgame-tag/search", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame-tag/multi", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame-tag/:name", a.GalgameHandler.ProxyGet)
-	api.Get("/galgame-official", a.GalgameHandler.ProxyGet)
+	api.Get("/galgame-official", a.GalgameHandler.GetOfficialList)
 	api.Get("/galgame-official/search", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame-official/:name", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame-engine", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame-engine/:name", a.GalgameHandler.ProxyGet)
-	api.Get("/galgame-series", a.GalgameHandler.ProxyGet)
+	api.Get("/galgame-series", a.GalgameHandler.GetSeriesList)
 	api.Get("/galgame-series/search", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame-series/:id", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame-resource", a.GalgameHandler.GetResourceList)

@@ -25,10 +25,10 @@ type KunUserWithMoemoepoint struct {
 
 type ListTopicsRequest struct {
 	Page      int    `query:"page" validate:"min=1"`
-	Limit     int    `query:"limit" validate:"min=1,max=30"`
-	SortField string `query:"sortField" validate:"required"`
-	SortOrder string `query:"sortOrder" validate:"required,oneof=asc desc"`
-	Category  string `query:"category" validate:"required"`
+	Limit     int    `query:"limit" validate:"min=1,max=50"`
+	SortField string `query:"sortField"`
+	SortOrder string `query:"sortOrder" validate:"omitempty,oneof=asc desc"`
+	Category  string `query:"category"`
 }
 
 type TopicCard struct {

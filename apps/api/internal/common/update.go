@@ -41,7 +41,10 @@ func (h *UpdateHandler) GetHistory(c *fiber.Ctx) error {
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
 		Find(&logs)
 
-	return response.Paginated(c, logs, total)
+	return response.OK(c, fiber.Map{
+		"updates": logs,
+		"total":   total,
+	})
 }
 
 // CreateHistory creates an update log.
@@ -114,7 +117,10 @@ func (h *UpdateHandler) GetTodos(c *fiber.Ctx) error {
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
 		Find(&todos)
 
-	return response.Paginated(c, todos, total)
+	return response.OK(c, fiber.Map{
+		"todos": todos,
+		"total": total,
+	})
 }
 
 // CreateTodo creates a todo item.

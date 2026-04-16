@@ -71,16 +71,16 @@ func (h *ToolsetHandler) GetList(c *fiber.Ctx) error {
 
 	query := h.db.Model(&model.GalgameToolset{}).Where("status != 1")
 
-	if req.Type != "" {
+	if req.Type != "" && req.Type != "all" {
 		query = query.Where("type = ?", req.Type)
 	}
-	if req.Language != "" {
+	if req.Language != "" && req.Language != "all" {
 		query = query.Where("language = ?", req.Language)
 	}
-	if req.Platform != "" {
+	if req.Platform != "" && req.Platform != "all" {
 		query = query.Where("platform = ?", req.Platform)
 	}
-	if req.Version != "" {
+	if req.Version != "" && req.Version != "all" {
 		query = query.Where("version = ?", req.Version)
 	}
 
