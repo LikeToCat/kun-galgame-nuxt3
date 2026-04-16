@@ -1,24 +1,16 @@
-export type GalgameHistoryAction =
+export type GalgameRevisionAction =
   | 'created'
   | 'updated'
-  | 'deleted'
   | 'merged'
+  | 'reverted'
   | 'declined'
-export type GalgameHistoryType = 'galgame' | 'banner' | 'link' | 'pr'
 
-export interface GalgameHistoryCreateRequestData {
-  galgame_id: number
-  user_id: number
-  action: GalgameHistoryAction
-  type: GalgameHistoryType
-  content: string
-}
-
-export interface GalgameHistory {
+export interface GalgameRevision {
   id: number
-  action: GalgameHistoryAction
-  type: GalgameHistoryType
-  content: string
+  revision: number
+  action: GalgameRevisionAction
+  note: string
   user: KunUser
+  isMinor: boolean
   created: Date | string
 }

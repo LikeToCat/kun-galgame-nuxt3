@@ -97,7 +97,7 @@ func New(cfg *config.Config) *App {
 	app := &App{
 		DB: db, Redis: rdb, S3: s3Client, Mailer: mailer, Config: cfg,
 		OAuthHandler:   handler.NewOAuthHandler(authService, cfg.Server.Mode == "prod"),
-		UserHandler:    handler.NewUserHandler(userService, gc),
+		UserHandler:    handler.NewUserHandler(db, userService, gc),
 		HomeHandler:    common.NewHomeHandler(db, gc),
 		TopicHandler:   topicHandler.NewTopicHandler(topicSvc),
 		ReplyHandler:   topicHandler.NewReplyHandler(replySvc, commentSvc),

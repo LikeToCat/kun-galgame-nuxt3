@@ -87,7 +87,7 @@ watch(
           详情
         </KunButton>
 
-        <span v-if="pr.status == 2">{{ `#${pr.index}` }}</span>
+        <span v-if="pr.status == 2">{{ `#${pr.id}` }}</span>
 
         <KunButton
           :is-icon-only="true"

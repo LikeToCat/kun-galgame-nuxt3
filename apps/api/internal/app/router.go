@@ -41,6 +41,7 @@ func (a *App) setupRoutes() {
 	api.Post("/user/avatar", userAuth, avatarRL, a.UserHandler.UploadAvatar)
 
 	// User (public, parameterized — AFTER fixed paths)
+	api.Get("/user/:uid/floating", a.UserHandler.GetFloatingCard)
 	api.Get("/user/:uid", a.UserHandler.GetProfile)
 	api.Get("/user/:uid/galgames", a.UserHandler.GetUserGalgames)
 	api.Get("/user/:uid/topics", a.UserHandler.GetUserTopics)
@@ -104,6 +105,9 @@ func (a *App) setupRoutes() {
 	api.Get("/galgame/:gid/links", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame/:gid/aliases", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame/:gid/contributors", a.GalgameHandler.ProxyGet)
+	// NOTE: galgame detail sub-routes (/pr/all, /link/all, etc.) are
+	// registered in the optAuth group below to avoid Fiber route shadowing
+	// by /galgame/:gid.
 	api.Get("/galgame-tag", a.GalgameHandler.GetTagList)
 	api.Get("/galgame-tag/search", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame-tag/multi", a.GalgameHandler.ProxyGet)
@@ -132,9 +136,13 @@ func (a *App) setupRoutes() {
 	optAuth.Get("/topic/:tid/poll/topic", a.PollHandler.GetPollsByTopic)
 	optAuth.Get("/topic/:tid/poll/log", a.PollHandler.GetVoteLog)
 
-	// Galgame (optional auth for like/favorite status)
+	// Galgame detail sub-routes (MUST be before /:gid to avoid shadowing)
+	optAuth.Get("/galgame/:gid/resource/all", a.GalgameHandler.GetGalgameResources)
+	optAuth.Get("/galgame/:gid/comment/all", a.GalgameHandler.GetComments)
+	optAuth.Get("/galgame/:gid/pr/all", a.GalgameHandler.GetGalgamePRs)
+	optAuth.Get("/galgame/:gid/link/all", a.GalgameHandler.GetGalgameLinks)
+	optAuth.Get("/galgame/:gid/history/all", a.GalgameHandler.GetGalgameHistory)
 	optAuth.Get("/galgame/:gid", a.GalgameHandler.GetDetail)
-	optAuth.Get("/galgame/:gid/comment", a.GalgameHandler.GetComments)
 
 	// Website (optional auth for like/favorite status)
 	optAuth.Get("/website", a.WebsiteHandler.GetWebsites)

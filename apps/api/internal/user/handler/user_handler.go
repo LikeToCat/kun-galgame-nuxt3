@@ -12,15 +12,17 @@ import (
 	"kun-galgame-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 type UserHandler struct {
+	db          *gorm.DB
 	userService *service.UserService
 	wikiGC      *galgameClient.GalgameClient
 }
 
-func NewUserHandler(userService *service.UserService, gc *galgameClient.GalgameClient) *UserHandler {
-	return &UserHandler{userService: userService, wikiGC: gc}
+func NewUserHandler(db *gorm.DB, userService *service.UserService, gc *galgameClient.GalgameClient) *UserHandler {
+	return &UserHandler{db: db, userService: userService, wikiGC: gc}
 }
 
 // GetProfile returns a user's public profile.
@@ -281,4 +283,54 @@ func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
 	}
 
 	return response.OKMessage(c, "用户已删除")
+}
+
+// GetFloatingCard returns lightweight user info for hover card.
+// GET /api/user/:uid/floating
+func (h *UserHandler) GetFloatingCard(c *fiber.Ctx) error {
+	var req struct {
+		UserID int `query:"userId" validate:"required,min=1"`
+	}
+	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	type userRow struct {
+		ID           int    `gorm:"column:id"`
+		Name         string `gorm:"column:name"`
+		Avatar       string `gorm:"column:avatar"`
+		Moemoepoint  int    `gorm:"column:moemoepoint"`
+		Bio          string `gorm:"column:bio"`
+		Status       int    `gorm:"column:status"`
+	}
+	var user userRow
+	if err := h.db.Table(`"user"`).Where("id = ?", req.UserID).Scan(&user).Error; err != nil {
+		return response.Error(c, errors.ErrNotFound("未找到该用户"))
+	}
+	if user.Status == 1 {
+		return response.Error(c, errors.ErrNotFound("该用户已被封禁"))
+	}
+
+	// Count various contributions
+	var topicCount, replyCount, commentCount, galgameCommentCount int64
+	var websiteCommentCount, resourceCount int64
+	h.db.Table("topic").Where("user_id = ?", req.UserID).Count(&topicCount)
+	h.db.Table("topic_reply").Where("user_id = ?", req.UserID).Count(&replyCount)
+	h.db.Table("topic_comment").Where("user_id = ?", req.UserID).Count(&commentCount)
+	h.db.Table("galgame_comment").Where("user_id = ?", req.UserID).Count(&galgameCommentCount)
+	h.db.Table("galgame_website_comment").Where("user_id = ?", req.UserID).Count(&websiteCommentCount)
+	h.db.Table("galgame_resource").Where("user_id = ?", req.UserID).Count(&resourceCount)
+
+	return response.OK(c, fiber.Map{
+		"id":                     user.ID,
+		"name":                   user.Name,
+		"avatar":                 user.Avatar,
+		"moemoepoint":            user.Moemoepoint,
+		"topicCount":             topicCount,
+		"topicReplyCount":        replyCount,
+		"topicCommentCount":      commentCount + galgameCommentCount + websiteCommentCount,
+		"galgameCount":           0,
+		"galgameResourceCount":   resourceCount,
+		"galgameContributeCount": 0,
+	})
 }

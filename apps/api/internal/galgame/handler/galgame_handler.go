@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"kun-galgame-api/internal/constants"
 	"kun-galgame-api/internal/galgame/client"
@@ -1016,6 +1017,7 @@ func emptyIfNil(s []string) []string {
 func toWikiPath(path string) string {
 	// Strip /api prefix: "/api/galgame-tag/..." → "/galgame-tag/..."
 	wp := path[4:]
+
 	// Translate frontend prefixes to wiki prefixes
 	for _, prefix := range []string{
 		"/galgame-tag", "/galgame-official",
@@ -1023,10 +1025,27 @@ func toWikiPath(path string) string {
 		"/galgame-resource",
 	} {
 		wiki := "/" + prefix[len("/galgame-"):]
-		if wp == prefix || len(wp) > len(prefix) && wp[len(prefix)] == '/' {
+		if strings.HasPrefix(wp, prefix) &&
+			(len(wp) == len(prefix) || wp[len(prefix)] == '/') {
 			return wiki + wp[len(prefix):]
 		}
 	}
+
+	// Translate galgame detail sub-paths:
+	//   /galgame/:gid/pr/all     → /galgame/:gid/prs
+	//   /galgame/:gid/link/all   → /galgame/:gid/links
+	//   /galgame/:gid/history/all → /galgame/:gid/revisions
+	suffixMap := map[string]string{
+		"/pr/all":      "/prs",
+		"/link/all":    "/links",
+		"/history/all": "/revisions",
+	}
+	for suffix, replacement := range suffixMap {
+		if strings.HasSuffix(wp, suffix) {
+			return wp[:len(wp)-len(suffix)] + replacement
+		}
+	}
+
 	return wp
 }
 
@@ -1172,6 +1191,255 @@ func (h *GalgameHandler) GetResourceList(c *fiber.Ctx) error {
 		"resources": resources,
 		"total":     total,
 	})
+}
+
+// GetGalgameLinks wraps wiki /galgame/:gid/links, resolving user_id → KunUser.
+// GET /api/galgame/:gid/link/all
+func (h *GalgameHandler) GetGalgameLinks(c *fiber.Ctx) error {
+	gid := c.Params("gid")
+	data, appErr := h.galgameClient.Get(
+		c.Context(), "/galgame/"+gid+"/links", nil,
+	)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	type wikiLink struct {
+		ID        int    `json:"id"`
+		Name      string `json:"name"`
+		Link      string `json:"link"`
+		GalgameID int    `json:"galgame_id"`
+		UserID    int    `json:"user_id"`
+	}
+	var links []wikiLink
+	if err := json.Unmarshal(data, &links); err != nil {
+		return response.OK(c, []fiber.Map{})
+	}
+
+	// Batch resolve users
+	userIDs := make([]int, len(links))
+	for i, l := range links {
+		userIDs[i] = l.UserID
+	}
+	var users []userModel.UserBrief
+	if len(userIDs) > 0 {
+		h.db.Where("id IN ?", userIDs).Find(&users)
+	}
+	userMap := make(map[int]userModel.UserBrief, len(users))
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	result := make([]fiber.Map, len(links))
+	for i, l := range links {
+		result[i] = fiber.Map{
+			"id":        l.ID,
+			"user":      userMap[l.UserID],
+			"galgameId": l.GalgameID,
+			"name":      l.Name,
+			"link":      l.Link,
+		}
+	}
+	return response.OK(c, result)
+}
+
+// GetGalgameHistory wraps wiki /galgame/:gid/revisions, transforming for frontend.
+// GET /api/galgame/:gid/history/all
+func (h *GalgameHandler) GetGalgameHistory(c *fiber.Ctx) error {
+	gid := c.Params("gid")
+	query := make(url.Values)
+	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		query.Set(string(key), string(value))
+	})
+
+	data, appErr := h.galgameClient.Get(
+		c.Context(), "/galgame/"+gid+"/revisions", query,
+	)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	type wikiRevision struct {
+		ID        int    `json:"id"`
+		GalgameID int    `json:"galgame_id"`
+		Revision  int    `json:"revision"`
+		UserID    int    `json:"user_id"`
+		Action    string `json:"action"`
+		Note      string `json:"note"`
+		IsMinor   bool   `json:"is_minor"`
+		Created   string `json:"created"`
+	}
+	var parsed struct {
+		Items []wikiRevision `json:"items"`
+		Total int64          `json:"total"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return response.Paginated(c, []fiber.Map{}, 0)
+	}
+
+	// Batch resolve users
+	userIDs := make([]int, len(parsed.Items))
+	for i, r := range parsed.Items {
+		userIDs[i] = r.UserID
+	}
+	var users []userModel.UserBrief
+	if len(userIDs) > 0 {
+		h.db.Where("id IN ?", userIDs).Find(&users)
+	}
+	userMap := make(map[int]userModel.UserBrief, len(users))
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	items := make([]fiber.Map, len(parsed.Items))
+	for i, r := range parsed.Items {
+		items[i] = fiber.Map{
+			"id":       r.ID,
+			"revision": r.Revision,
+			"action":   r.Action,
+			"note":     r.Note,
+			"user":     userMap[r.UserID],
+			"isMinor":  r.IsMinor,
+			"created":  r.Created,
+		}
+	}
+
+	return response.Paginated(c, items, parsed.Total)
+}
+
+// GetGalgamePRs wraps wiki /galgame/:gid/prs, transforming for frontend.
+// GET /api/galgame/:gid/pr/all
+func (h *GalgameHandler) GetGalgamePRs(c *fiber.Ctx) error {
+	gid := c.Params("gid")
+	query := make(url.Values)
+	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		query.Set(string(key), string(value))
+	})
+
+	data, appErr := h.galgameClient.Get(
+		c.Context(), "/galgame/"+gid+"/prs", query,
+	)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	type wikiPR struct {
+		ID            int     `json:"id"`
+		GalgameID     int     `json:"galgame_id"`
+		Status        int     `json:"status"`
+		Note          string  `json:"note"`
+		BaseRevision  int     `json:"base_revision"`
+		UserID        int     `json:"user_id"`
+		CompletedTime *string `json:"completed_time"`
+		Created       string  `json:"created"`
+	}
+	var parsed struct {
+		Items []wikiPR `json:"items"`
+		Total int64    `json:"total"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return response.Paginated(c, []fiber.Map{}, 0)
+	}
+
+	userIDs := make([]int, len(parsed.Items))
+	for i, r := range parsed.Items {
+		userIDs[i] = r.UserID
+	}
+	var users []userModel.UserBrief
+	if len(userIDs) > 0 {
+		h.db.Where("id IN ?", userIDs).Find(&users)
+	}
+	userMap := make(map[int]userModel.UserBrief, len(users))
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	items := make([]fiber.Map, len(parsed.Items))
+	for i, r := range parsed.Items {
+		items[i] = fiber.Map{
+			"id":            r.ID,
+			"galgameId":     r.GalgameID,
+			"status":        r.Status,
+			"note":          r.Note,
+			"baseRevision":  r.BaseRevision,
+			"user":          userMap[r.UserID],
+			"completedTime": r.CompletedTime,
+			"created":       r.Created,
+		}
+	}
+
+	return response.Paginated(c, items, parsed.Total)
+}
+
+// GetGalgameResources returns resources for a specific galgame.
+// GET /api/galgame/:gid/resource/all
+func (h *GalgameHandler) GetGalgameResources(c *fiber.Ctx) error {
+	var req struct {
+		GalgameID int `query:"galgameId" validate:"required,min=1"`
+	}
+	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	type resourceRow struct {
+		ID        int     `gorm:"column:id"`
+		GalgameID int     `gorm:"column:galgame_id"`
+		UserID    int     `gorm:"column:user_id"`
+		Type      string  `gorm:"column:type"`
+		Language  string  `gorm:"column:language"`
+		Platform  string  `gorm:"column:platform"`
+		Size      string  `gorm:"column:size"`
+		Status    int     `gorm:"column:status"`
+		Download  int     `gorm:"column:download"`
+		LikeCount int     `gorm:"column:like_count"`
+		Note      string  `gorm:"column:note"`
+		Created   string  `gorm:"column:created"`
+		Edited    *string `gorm:"column:edited"`
+		View      int     `gorm:"column:view"`
+	}
+	var rows []resourceRow
+	h.db.Table("galgame_resource").
+		Where("galgame_id = ?", req.GalgameID).
+		Order("created DESC").
+		Scan(&rows)
+
+	// Batch load users
+	userIDs := make([]int, len(rows))
+	for i, r := range rows {
+		userIDs[i] = r.UserID
+	}
+	var users []userModel.UserBrief
+	if len(userIDs) > 0 {
+		h.db.Where("id IN ?", userIDs).Find(&users)
+	}
+	userMap := make(map[int]userModel.UserBrief, len(users))
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	resources := make([]fiber.Map, len(rows))
+	for i, r := range rows {
+		resources[i] = fiber.Map{
+			"id":         r.ID,
+			"galgameId":  r.GalgameID,
+			"user":       userMap[r.UserID],
+			"type":       r.Type,
+			"language":   r.Language,
+			"platform":   r.Platform,
+			"size":       r.Size,
+			"status":     r.Status,
+			"download":   r.Download,
+			"likeCount":  r.LikeCount,
+			"isLiked":    false,
+			"linkDomain": "",
+			"note":       r.Note,
+			"view":       r.View,
+			"created":    r.Created,
+			"edited":     r.Edited,
+		}
+	}
+
+	return response.OK(c, resources)
 }
 
 // GetAllRatings returns paginated galgame ratings.

@@ -10,30 +10,30 @@ const pageData = reactive({
   galgameId: gid.value
 })
 
-const { data, status, refresh } = await useKunFetch(
-  `/galgame/${gid.value}/pr/all`,
-  {
-    lazy: true,
-    method: 'GET',
-    query: pageData
-  }
-)
+const { data, status, refresh } = await useKunFetch<{
+  items: GalgamePR[]
+  total: number
+}>(`/galgame/${gid.value}/pr/all`, {
+  lazy: true,
+  method: 'GET',
+  query: pageData
+})
 </script>
 
 <template>
   <div class="flex flex-col space-y-3" v-if="data">
     <KunHeader
       name="更新请求"
-      description="蓝色代表增加, 红色代表删减, 游戏发布者或管理员可以合并或拒绝请求, 您可以自己合并自己为自己创建的游戏提出的更新请求"
+      description="游戏发布者或管理员可以合并或拒绝请求"
       scale="h3"
     />
 
     <KunLoading v-if="status === 'pending'" />
-    <GalgameNull v-if="status !== 'pending' && !data.prs.length" />
+    <GalgameNull v-if="status !== 'pending' && !data.items.length" />
 
     <div class="space-y-2" v-if="status === 'success'">
       <GalgamePrInfo
-        v-for="(pr, index) in data.prs"
+        v-for="(pr, index) in data.items"
         :key="index"
         :galgame-id="gid"
         :pr="pr"
@@ -43,7 +43,7 @@ const { data, status, refresh } = await useKunFetch(
     </div>
 
     <KunPagination
-      v-if="data.total > 10 || data.total === 10"
+      v-if="data.total >= pageData.limit"
       v-model:current-page="pageData.page"
       :total-page="Math.ceil(data.total / pageData.limit)"
       :is-loading="status === 'pending'"
