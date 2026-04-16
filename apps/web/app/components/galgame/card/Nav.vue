@@ -1,9 +1,5 @@
 <script setup lang="ts">
 import {
-  kunGalgameResourceTypeOptions,
-  kunGalgameResourceLanguageOptions,
-  kunGalgameResourcePlatformOptions,
-  kunGalgameSortFieldOptions,
   KUN_GALGAME_RESOURCE_TYPE_MAP,
   KUN_GALGAME_RESOURCE_LANGUAGE_MAP,
   KUN_GALGAME_RESOURCE_PLATFORM_MAP,
@@ -21,7 +17,7 @@ import type {
   KunGalgameResourcePlatformOptions
 } from '~/constants/galgame'
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     isShowAdvanced?: boolean
   }>(),
@@ -34,9 +30,7 @@ const { page, type, language, platform, sortField, sortOrder } = storeToRefs(
 
 const advStore = usePersistKUNGalgameAdvancedFilterStore()
 const { includeProviders, excludeOnlyProviders } = storeToRefs(advStore)
-const hasAdvanceFilter = computed(
-  () => !!includeProviders.value.length || !!excludeOnlyProviders.value.length
-)
+const showAdvanced = ref(false)
 
 watch(
   () => [
@@ -53,141 +47,175 @@ watch(
   }
 )
 
-const toggleIncludeProvider = (key: ProviderKey) => {
-  advStore.toggleIncludeProvider(key)
-}
+const typeOptions = Object.entries(KUN_GALGAME_RESOURCE_TYPE_MAP)
+  .filter(([k]) => k !== 'name')
+  .map(([value, label]) => ({ value, label }))
 
-const toggleExcludeOnlyProvider = (key: ProviderKey) => {
-  advStore.toggleExcludeOnlyProvider(key)
-}
+const langOptions = Object.entries(KUN_GALGAME_RESOURCE_LANGUAGE_MAP).map(
+  ([value, label]) => ({ value, label })
+)
+
+const platformOptions = Object.entries(KUN_GALGAME_RESOURCE_PLATFORM_MAP)
+  .filter(([k]) => k !== 'name')
+  .map(([value, label]) => ({ value, label }))
+
+const sortOptions = Object.entries(KUN_GALGAME_RESOURCE_SORT_FIELD_MAP).map(
+  ([value, label]) => ({
+    value: value === 'views' ? 'view' : value,
+    label
+  })
+)
 </script>
 
 <template>
-  <div
-    class="flex w-full shrink-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-transparent sm:flex-nowrap"
-  >
-    <div class="grid w-full grid-cols-2 gap-3 lg:grid-cols-4">
-      <KunSelect
-        :model-value="type"
-        :options="kunGalgameResourceTypeOptions"
-        @set="(newVal) => (type = newVal as KunGalgameResourceTypeOptions)"
-      >
-        {{ KUN_GALGAME_RESOURCE_TYPE_MAP[type] }}
-      </KunSelect>
-
-      <KunSelect
-        :options="kunGalgameResourceLanguageOptions"
-        :model-value="language"
-        @set="
-          (newVal) => (language = newVal as KunGalgameResourceLanguageOptions)
+  <div class="space-y-1">
+    <KunScrollShadow>
+      <button
+        v-for="opt in typeOptions"
+        :key="opt.value"
+        class="cursor-pointer rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
+        :class="
+          type === opt.value
+            ? 'bg-primary/15 text-primary font-medium'
+            : 'text-default-600 hover:bg-default-100'
         "
+        @click="type = opt.value as KunGalgameResourceTypeOptions"
       >
-        {{ KUN_GALGAME_RESOURCE_LANGUAGE_MAP[language] }}
-      </KunSelect>
+        {{ opt.label }}
+      </button>
+    </KunScrollShadow>
 
-      <KunSelect
-        :options="kunGalgameResourcePlatformOptions"
-        :model-value="platform"
-        @set="
-          (newVal) => (platform = newVal as KunGalgameResourcePlatformOptions)
+    <KunScrollShadow>
+      <button
+        v-for="opt in langOptions"
+        :key="opt.value"
+        class="cursor-pointer rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
+        :class="
+          language === opt.value
+            ? 'bg-primary/15 text-primary font-medium'
+            : 'text-default-600 hover:bg-default-100'
         "
+        @click="language = opt.value as KunGalgameResourceLanguageOptions"
       >
-        {{ KUN_GALGAME_RESOURCE_PLATFORM_MAP[platform] }}
-      </KunSelect>
+        {{ opt.label }}
+      </button>
+    </KunScrollShadow>
 
-      <KunSelect
-        :options="kunGalgameSortFieldOptions"
-        :model-value="sortField"
-        @set="(value) => (sortField = value as 'time' | 'view' | 'created')"
+    <KunScrollShadow>
+      <button
+        v-for="opt in platformOptions"
+        :key="opt.value"
+        class="cursor-pointer rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
+        :class="
+          platform === opt.value
+            ? 'bg-primary/15 text-primary font-medium'
+            : 'text-default-600 hover:bg-default-100'
+        "
+        @click="platform = opt.value as KunGalgameResourcePlatformOptions"
       >
-        <span>{{ KUN_GALGAME_RESOURCE_SORT_FIELD_MAP[sortField] }}</span>
-      </KunSelect>
-    </div>
+        {{ opt.label }}
+      </button>
+    </KunScrollShadow>
 
-    <div class="flex shrink-0 items-center gap-2">
-      <KunPopover
-        v-if="props.isShowAdvanced"
-        :auto-position="true"
-        position="bottom-end"
-        :inner-class="'min-w-64 p-3'"
+    <KunScrollShadow>
+      <button
+        v-for="opt in sortOptions"
+        :key="opt.value"
+        class="cursor-pointer rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
+        :class="
+          sortField === opt.value
+            ? 'bg-primary/15 text-primary font-medium'
+            : 'text-default-600 hover:bg-default-100'
+        "
+        @click="sortField = opt.value as 'time' | 'view' | 'created'"
       >
-        <template #trigger>
-          <KunButton
-            :color="hasAdvanceFilter ? 'warning' : 'primary'"
-            :variant="hasAdvanceFilter ? 'flat' : 'light'"
-          >
-            <KunIcon
-              :name="hasAdvanceFilter ? 'lucide:check' : 'lucide:filter'"
-              class="mr-2"
-            />
-            <span>高级筛选</span>
-          </KunButton>
-        </template>
+        {{ opt.label }}
+      </button>
+    </KunScrollShadow>
 
-        <div class="space-y-3">
-          <div>
-            <div class="mb-2 text-sm font-medium">
-              必须含有下面网盘下载的 Galgame
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-              <KunCheckBox
-                v-for="key in PROVIDER_KEY_OPTIONS"
-                :key="key"
-                class-name="gap-2 last:col-span-2"
-                color="primary"
-                :model-value="includeProviders.includes(key)"
-                @click="toggleIncludeProvider(key as ProviderKey)"
-              >
-                {{ KUN_GALGAME_PROVIDER_LABEL_MAP[key as ProviderKey] }}
-              </KunCheckBox>
-            </div>
-          </div>
-
-          <KunDivider />
-
-          <div>
-            <div class="mb-2 text-sm font-medium">
-              排除仅含有以下网盘下载的 Galgame
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-              <KunCheckBox
-                v-for="key in PROVIDER_KEY_OPTIONS"
-                :key="key + '-ex'"
-                class-name="gap-2 last:col-span-2"
-                color="danger"
-                :model-value="excludeOnlyProviders.includes(key)"
-                @click="toggleExcludeOnlyProvider(key as ProviderKey)"
-              >
-                {{ KUN_GALGAME_PROVIDER_LABEL_MAP[key as ProviderKey] }}
-              </KunCheckBox>
-            </div>
-          </div>
-
-          <KunDivider />
-
-          <div class="text-default-500 text-sm">
-            网站是聪明的萝莉, 她会记住您的高级筛选, 下次使用时仍会应用筛选
-          </div>
-        </div>
-      </KunPopover>
-
-      <KunButton
-        :is-icon-only="true"
-        :variant="sortOrder === 'desc' ? 'flat' : 'light'"
-        size="lg"
+    <div class="flex items-center gap-1.5">
+      <button
+        class="cursor-pointer rounded-md p-1 transition-colors"
+        :class="
+          sortOrder === 'desc'
+            ? 'bg-primary/15 text-primary'
+            : 'text-default-500 hover:bg-default-100'
+        "
         @click="sortOrder = 'desc'"
       >
-        <KunIcon class="text-inherit" name="lucide:arrow-down" />
-      </KunButton>
-
-      <KunButton
-        :is-icon-only="true"
-        :variant="sortOrder === 'asc' ? 'flat' : 'light'"
-        size="lg"
+        <KunIcon name="lucide:arrow-down" />
+      </button>
+      <button
+        class="cursor-pointer rounded-md p-1 transition-colors"
+        :class="
+          sortOrder === 'asc'
+            ? 'bg-primary/15 text-primary'
+            : 'text-default-500 hover:bg-default-100'
+        "
         @click="sortOrder = 'asc'"
       >
-        <KunIcon class="text-inherit" name="lucide:arrow-up" />
-      </KunButton>
+        <KunIcon name="lucide:arrow-up" />
+      </button>
+
+      <button
+        v-if="isShowAdvanced"
+        class="text-default-500 hover:text-primary flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-sm transition-colors"
+        :class="
+          (includeProviders.length || excludeOnlyProviders.length) &&
+          'text-warning'
+        "
+        @click="showAdvanced = !showAdvanced"
+      >
+        <KunIcon name="lucide:filter" class="text-inherit" />
+        <span>网盘筛选</span>
+      </button>
+    </div>
+
+    <div
+      v-if="showAdvanced"
+      class="bg-default-50 space-y-3 rounded-lg border p-3"
+    >
+      <div>
+        <div class="text-default-700 mb-1.5 text-xs font-medium">
+          必须含有以下网盘
+        </div>
+        <KunScrollShadow>
+          <button
+            v-for="key in PROVIDER_KEY_OPTIONS"
+            :key="key"
+            class="cursor-pointer rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
+            :class="
+              includeProviders.includes(key)
+                ? 'bg-primary/15 text-primary font-medium'
+                : 'text-default-600 hover:bg-default-100'
+            "
+            @click="advStore.toggleIncludeProvider(key as ProviderKey)"
+          >
+            {{ KUN_GALGAME_PROVIDER_LABEL_MAP[key as ProviderKey] }}
+          </button>
+        </KunScrollShadow>
+      </div>
+
+      <div>
+        <div class="text-default-700 mb-1.5 text-xs font-medium">
+          排除仅含以下网盘
+        </div>
+        <KunScrollShadow>
+          <button
+            v-for="key in PROVIDER_KEY_OPTIONS"
+            :key="key + '-ex'"
+            class="cursor-pointer rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
+            :class="
+              excludeOnlyProviders.includes(key)
+                ? 'bg-danger/15 text-danger font-medium'
+                : 'text-default-600 hover:bg-default-100'
+            "
+            @click="advStore.toggleExcludeOnlyProvider(key as ProviderKey)"
+          >
+            {{ KUN_GALGAME_PROVIDER_LABEL_MAP[key as ProviderKey] }}
+          </button>
+        </KunScrollShadow>
+      </div>
     </div>
   </div>
 </template>

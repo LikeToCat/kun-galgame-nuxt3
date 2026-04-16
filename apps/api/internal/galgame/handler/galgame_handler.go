@@ -874,13 +874,15 @@ func truncate(s string, maxLen int) string {
 // GET /api/galgame
 func (h *GalgameHandler) GetList(c *fiber.Ctx) error {
 	var req struct {
-		Page      int    `query:"page" validate:"min=1"`
-		Limit     int    `query:"limit" validate:"min=1,max=50"`
-		Type      string `query:"type"`
-		Language  string `query:"language"`
-		Platform  string `query:"platform"`
-		SortField string `query:"sortField"`
-		SortOrder string `query:"sortOrder" validate:"omitempty,oneof=asc desc"`
+		Page                 int    `query:"page" validate:"min=1"`
+		Limit                int    `query:"limit" validate:"min=1,max=50"`
+		Type                 string `query:"type"`
+		Language             string `query:"language"`
+		Platform             string `query:"platform"`
+		SortField            string `query:"sortField"`
+		SortOrder            string `query:"sortOrder" validate:"omitempty,oneof=asc desc"`
+		IncludeProviders     string `query:"includeProviders"`
+		ExcludeOnlyProviders string `query:"excludeOnlyProviders"`
 	}
 	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
 		return response.Error(c, appErr)
@@ -889,10 +891,21 @@ func (h *GalgameHandler) GetList(c *fiber.Ctx) error {
 		req.SortOrder = "desc"
 	}
 
+	// Parse provider filters (comma-separated)
+	var includeProviders, excludeOnlyProviders []string
+	if req.IncludeProviders != "" {
+		includeProviders = strings.Split(req.IncludeProviders, ",")
+	}
+	if req.ExcludeOnlyProviders != "" {
+		excludeOnlyProviders = strings.Split(req.ExcludeOnlyProviders, ",")
+	}
+
 	// Build resource filter to find matching galgame IDs
 	hasResourceFilter := (req.Type != "" && req.Type != "all") ||
 		(req.Language != "" && req.Language != "all") ||
-		(req.Platform != "" && req.Platform != "all")
+		(req.Platform != "" && req.Platform != "all") ||
+		len(includeProviders) > 0 ||
+		len(excludeOnlyProviders) > 0
 
 	// Determine sort column (local galgame table)
 	sortCol := "g.updated"
@@ -926,6 +939,31 @@ func (h *GalgameHandler) GetList(c *fiber.Ctx) error {
 		}
 		if req.Platform != "" && req.Platform != "all" {
 			query = query.Where("gr.platform = ?", req.Platform)
+		}
+		if len(includeProviders) > 0 {
+			// Resource must contain at least one of these providers
+			query = query.Where("gr.provider && ?", "{"+strings.Join(includeProviders, ",")+"}")
+		}
+		if len(excludeOnlyProviders) > 0 {
+			// Exclude galgames where ALL resources only have excluded providers
+			// i.e. keep galgames that have at least one resource with a non-excluded provider
+			allProviders := []string{"baidu", "aliyun", "quark", "pan123", "tianyiyun", "caiyun", "xunlei", "uc", "lanzou", "other"}
+			var allowed []string
+			for _, p := range allProviders {
+				excluded := false
+				for _, ex := range excludeOnlyProviders {
+					if p == ex {
+						excluded = true
+						break
+					}
+				}
+				if !excluded {
+					allowed = append(allowed, p)
+				}
+			}
+			if len(allowed) > 0 {
+				query = query.Where("gr.provider && ?", "{"+strings.Join(allowed, ",")+"}")
+			}
 		}
 
 		// Count total
