@@ -2,9 +2,10 @@ package common
 
 import (
 	"fmt"
-	"sort"
+	"strings"
 	"time"
 
+	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
 	"kun-galgame-api/pkg/utils"
 
@@ -33,37 +34,43 @@ type activityItem struct {
 	Content string `json:"content"`
 }
 
-// activitySource defines a single SQL query that produces activity rows.
-// The query MUST return columns: id, content, link, created, user_id.
+// activitySource defines a single SQL sub-query that produces
+// activity rows. The query MUST SELECT these exact columns:
+//
+//	type_str, id, content, link, created, user_id
+//
 // All column references must be fully qualified (t.xxx) to avoid
-// ambiguity with the JOIN on the "user" table.
+// ambiguity when later JOINed with the "user" table.
 type activitySource struct {
 	typeStr string
-	query   string // SELECT ... FROM ... WHERE ... (no ORDER/LIMIT)
+	query   string
 }
 
 var sources = map[string]activitySource{
 	"TOPIC_CREATION": {
 		typeStr: "TOPIC_CREATION",
-		query: `SELECT t.id, t.title AS content,
+		query: `SELECT 'TOPIC_CREATION' AS type_str, t.id,
+			t.title AS content,
 			'/topic/' || t.id AS link, t.created, t.user_id
 			FROM topic t WHERE t.status != 1`,
 	},
 	"TOPIC_REPLY_CREATION": {
 		typeStr: "TOPIC_REPLY_CREATION",
-		query: `SELECT t.id, SUBSTRING(t.content, 1, 100) AS content,
+		query: `SELECT 'TOPIC_REPLY_CREATION' AS type_str, t.id,
+			SUBSTRING(t.content, 1, 100) AS content,
 			'/topic/' || t.topic_id AS link, t.created, t.user_id
 			FROM topic_reply t`,
 	},
 	"TOPIC_COMMENT_CREATION": {
 		typeStr: "TOPIC_COMMENT_CREATION",
-		query: `SELECT t.id, SUBSTRING(t.content, 1, 100) AS content,
+		query: `SELECT 'TOPIC_COMMENT_CREATION' AS type_str, t.id,
+			SUBSTRING(t.content, 1, 100) AS content,
 			'/topic/' || t.topic_id AS link, t.created, t.user_id
 			FROM topic_comment t`,
 	},
 	"GALGAME_CREATION": {
 		typeStr: "GALGAME_CREATION",
-		query: `SELECT t.id,
+		query: `SELECT 'GALGAME_CREATION' AS type_str, t.id,
 			COALESCE(NULLIF(t.name_zh_cn,''), NULLIF(t.name_ja_jp,''),
 				NULLIF(t.name_en_us,''), t.name_zh_tw) AS content,
 			'/galgame/' || t.id AS link, t.created, t.user_id
@@ -71,89 +78,97 @@ var sources = map[string]activitySource{
 	},
 	"GALGAME_COMMENT_CREATION": {
 		typeStr: "GALGAME_COMMENT_CREATION",
-		query: `SELECT t.id, SUBSTRING(t.content, 1, 100) AS content,
+		query: `SELECT 'GALGAME_COMMENT_CREATION' AS type_str, t.id,
+			SUBSTRING(t.content, 1, 100) AS content,
 			'/galgame/' || t.galgame_id AS link, t.created, t.user_id
 			FROM galgame_comment t`,
 	},
 	"GALGAME_RESOURCE_CREATION": {
 		typeStr: "GALGAME_RESOURCE_CREATION",
-		query: `SELECT t.id,
+		query: `SELECT 'GALGAME_RESOURCE_CREATION' AS type_str, t.id,
 			COALESCE(NULLIF(t.note,''), t.type) AS content,
 			'/galgame/' || t.galgame_id AS link, t.created, t.user_id
 			FROM galgame_resource t`,
 	},
 	"GALGAME_RATING_CREATION": {
 		typeStr: "GALGAME_RATING_CREATION",
-		query: `SELECT t.id,
+		query: `SELECT 'GALGAME_RATING_CREATION' AS type_str, t.id,
 			SUBSTRING(COALESCE(t.short_summary,''), 1, 100) AS content,
 			'/galgame/' || t.galgame_id AS link, t.created, t.user_id
 			FROM galgame_rating t`,
 	},
 	"GALGAME_RATING_COMMENT_CREATION": {
 		typeStr: "GALGAME_RATING_COMMENT_CREATION",
-		query: `SELECT t.id, SUBSTRING(t.content, 1, 100) AS content,
+		query: `SELECT 'GALGAME_RATING_COMMENT_CREATION' AS type_str, t.id,
+			SUBSTRING(t.content, 1, 100) AS content,
 			'/galgame/' || t.galgame_rating_id AS link, t.created, t.user_id
 			FROM galgame_rating_comment t`,
 	},
 	"GALGAME_PR_CREATION": {
 		typeStr: "GALGAME_PR_CREATION",
-		query: `SELECT t.id,
+		query: `SELECT 'GALGAME_PR_CREATION' AS type_str, t.id,
 			COALESCE(NULLIF(t.note,''), 'PR') AS content,
 			'/galgame/' || t.galgame_id AS link, t.created, t.user_id
 			FROM galgame_pr t`,
 	},
 	"GALGAME_WEBSITE_CREATION": {
 		typeStr: "GALGAME_WEBSITE_CREATION",
-		query: `SELECT t.id, t.name AS content,
+		query: `SELECT 'GALGAME_WEBSITE_CREATION' AS type_str, t.id,
+			t.name AS content,
 			'/website/' || t.id AS link, t.created, t.user_id
 			FROM galgame_website t`,
 	},
 	"GALGAME_WEBSITE_COMMENT_CREATION": {
 		typeStr: "GALGAME_WEBSITE_COMMENT_CREATION",
-		query: `SELECT t.id, SUBSTRING(t.content, 1, 100) AS content,
+		query: `SELECT 'GALGAME_WEBSITE_COMMENT_CREATION' AS type_str, t.id,
+			SUBSTRING(t.content, 1, 100) AS content,
 			'/website/' || t.website_id AS link, t.created, t.user_id
 			FROM galgame_website_comment t`,
 	},
 	"TOOLSET_CREATION": {
 		typeStr: "TOOLSET_CREATION",
-		query: `SELECT t.id, t.name AS content,
+		query: `SELECT 'TOOLSET_CREATION' AS type_str, t.id,
+			t.name AS content,
 			'/toolset/' || t.id AS link, t.created, t.user_id
 			FROM galgame_toolset t WHERE t.status != 1`,
 	},
 	"TOOLSET_RESOURCE_CREATION": {
 		typeStr: "TOOLSET_RESOURCE_CREATION",
-		query: `SELECT t.id,
+		query: `SELECT 'TOOLSET_RESOURCE_CREATION' AS type_str, t.id,
 			COALESCE(NULLIF(t.note,''), t.content) AS content,
 			'/toolset/' || t.toolset_id AS link, t.created, t.user_id
 			FROM galgame_toolset_resource t`,
 	},
 	"TOOLSET_COMMENT_CREATION": {
 		typeStr: "TOOLSET_COMMENT_CREATION",
-		query: `SELECT t.id, SUBSTRING(t.content, 1, 100) AS content,
+		query: `SELECT 'TOOLSET_COMMENT_CREATION' AS type_str, t.id,
+			SUBSTRING(t.content, 1, 100) AS content,
 			'/toolset/' || t.toolset_id AS link, t.created, t.user_id
 			FROM galgame_toolset_comment t`,
 	},
 	"TODO_CREATION": {
 		typeStr: "TODO_CREATION",
-		query: `SELECT t.id, t.content_zh_cn AS content,
+		query: `SELECT 'TODO_CREATION' AS type_str, t.id,
+			t.content_zh_cn AS content,
 			'/update' AS link, t.created, t.user_id
 			FROM todo t`,
 	},
 	"UPDATE_LOG_CREATION": {
 		typeStr: "UPDATE_LOG_CREATION",
-		query: `SELECT t.id, t.content_zh_cn AS content,
+		query: `SELECT 'UPDATE_LOG_CREATION' AS type_str, t.id,
+			t.content_zh_cn AS content,
 			'/update' AS link, t.created, t.user_id
 			FROM update_log t`,
 	},
 	"MESSAGE_UPVOTE": {
 		typeStr: "MESSAGE_UPVOTE",
-		query: `SELECT t.id, t.content,
+		query: `SELECT 'MESSAGE_UPVOTE' AS type_str, t.id, t.content,
 			t.link, t.created, t.sender_id AS user_id
 			FROM message t WHERE t.type = 'upvoted'`,
 	},
 	"MESSAGE_SOLUTION": {
 		typeStr: "MESSAGE_SOLUTION",
-		query: `SELECT t.id, t.content,
+		query: `SELECT 'MESSAGE_SOLUTION' AS type_str, t.id, t.content,
 			t.link, t.created, t.sender_id AS user_id
 			FROM message t WHERE t.type = 'solution'`,
 	},
@@ -180,7 +195,10 @@ func (h *ActivityHandler) GetActivity(c *fiber.Ctx) error {
 		return response.Paginated(c, []activityItem{}, 0)
 	}
 
-	items, total := h.fetch(src, req.Page, req.Limit)
+	items, total, err := h.fetch(src, req.Page, req.Limit)
+	if err != nil {
+		return response.Error(c, errors.ErrInternal("查询活动数据失败"))
+	}
 	return response.Paginated(c, items, total)
 }
 
@@ -198,49 +216,93 @@ func (h *ActivityHandler) GetTimeline(c *fiber.Ctx) error {
 	return h.getTimeline(c, req.Page, req.Limit)
 }
 
+// getTimeline uses a single UNION ALL query across all source tables,
+// letting PostgreSQL handle the sort and pagination in one pass.
 func (h *ActivityHandler) getTimeline(
 	c *fiber.Ctx, page, limit int,
 ) error {
-	var all []activityItem
-	for _, src := range sources {
-		items, _ := h.fetch(src, 1, 50)
-		all = append(all, items...)
+	union := buildUnionAll()
+
+	var total int64
+	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM (%s) AS u`, union)
+	if err := h.db.Raw(countSQL).Scan(&total).Error; err != nil {
+		return response.Error(c, errors.ErrInternal("查询活动总数失败"))
 	}
 
-	sort.Slice(all, func(i, j int) bool {
-		return all[i].Timestamp.After(all[j].Timestamp)
-	})
-
-	total := int64(len(all))
-	start := (page - 1) * limit
-	if start >= len(all) {
-		return response.Paginated(c, []activityItem{}, total)
+	type row struct {
+		TypeStr  string    `gorm:"column:type_str"`
+		ID       int       `gorm:"column:id"`
+		Content  string    `gorm:"column:content"`
+		Link     string    `gorm:"column:link"`
+		Created  time.Time `gorm:"column:created"`
+		UserID   int       `gorm:"column:user_id"`
+		UserName string    `gorm:"column:user_name"`
+		Avatar   string    `gorm:"column:avatar"`
 	}
-	end := min(start+limit, len(all))
-	return response.Paginated(c, all[start:end], total)
+
+	dataSQL := fmt.Sprintf(
+		`SELECT u.*, usr.name AS user_name, usr.avatar
+		FROM (%s) AS u
+		LEFT JOIN "user" usr ON usr.id = u.user_id
+		ORDER BY u.created DESC
+		LIMIT %d OFFSET %d`,
+		union, limit, (page-1)*limit,
+	)
+	var rows []row
+	if err := h.db.Raw(dataSQL).Scan(&rows).Error; err != nil {
+		return response.Error(c, errors.ErrInternal("查询活动列表失败"))
+	}
+
+	items := make([]activityItem, len(rows))
+	for i, r := range rows {
+		items[i] = activityItem{
+			UniqueID:  fmt.Sprintf("%s-%d", r.TypeStr, r.ID),
+			Type:      r.TypeStr,
+			Content:   r.Content,
+			Link:      r.Link,
+			Timestamp: r.Created,
+		}
+		items[i].Actor.ID = r.UserID
+		items[i].Actor.Name = r.UserName
+		items[i].Actor.Avatar = r.Avatar
+	}
+
+	return response.Paginated(c, items, total)
 }
 
-// fetch wraps the source query with user JOIN, pagination, and
-// count. The inner query (src.query) selects: id, content, link,
-// created, user_id — all fully qualified to avoid column ambiguity.
+// buildUnionAll joins all source queries with UNION ALL.
+func buildUnionAll() string {
+	parts := make([]string, 0, len(sources))
+	for _, src := range sources {
+		parts = append(parts, "("+src.query+")")
+	}
+	return strings.Join(parts, " UNION ALL ")
+}
+
+// fetch runs a single source query with user JOIN, pagination,
+// and count. Returns error on DB failure instead of silently
+// returning empty results.
 func (h *ActivityHandler) fetch(
 	src activitySource, page, limit int,
-) ([]activityItem, int64) {
+) ([]activityItem, int64, error) {
 	type row struct {
-		ID        int       `gorm:"column:id"`
-		Content   string    `gorm:"column:content"`
-		Link      string    `gorm:"column:link"`
-		Created   time.Time `gorm:"column:created"`
-		UserID    int       `gorm:"column:user_id"`
-		UserName  string    `gorm:"column:user_name"`
-		Avatar    string    `gorm:"column:avatar"`
+		TypeStr  string    `gorm:"column:type_str"`
+		ID       int       `gorm:"column:id"`
+		Content  string    `gorm:"column:content"`
+		Link     string    `gorm:"column:link"`
+		Created  time.Time `gorm:"column:created"`
+		UserID   int       `gorm:"column:user_id"`
+		UserName string    `gorm:"column:user_name"`
+		Avatar   string    `gorm:"column:avatar"`
 	}
 
 	countSQL := fmt.Sprintf(
 		`SELECT COUNT(*) FROM (%s) AS sub`, src.query,
 	)
 	var total int64
-	h.db.Raw(countSQL).Scan(&total)
+	if err := h.db.Raw(countSQL).Scan(&total).Error; err != nil {
+		return nil, 0, err
+	}
 
 	dataSQL := fmt.Sprintf(
 		`SELECT sub.*, u.name AS user_name, u.avatar
@@ -251,13 +313,15 @@ func (h *ActivityHandler) fetch(
 		src.query, limit, (page-1)*limit,
 	)
 	var rows []row
-	h.db.Raw(dataSQL).Scan(&rows)
+	if err := h.db.Raw(dataSQL).Scan(&rows).Error; err != nil {
+		return nil, 0, err
+	}
 
 	items := make([]activityItem, len(rows))
 	for i, r := range rows {
 		items[i] = activityItem{
-			UniqueID:  fmt.Sprintf("%s-%d", src.typeStr, r.ID),
-			Type:      src.typeStr,
+			UniqueID:  fmt.Sprintf("%s-%d", r.TypeStr, r.ID),
+			Type:      r.TypeStr,
 			Content:   r.Content,
 			Link:      r.Link,
 			Timestamp: r.Created,
@@ -266,5 +330,5 @@ func (h *ActivityHandler) fetch(
 		items[i].Actor.Name = r.UserName
 		items[i].Actor.Avatar = r.Avatar
 	}
-	return items, total
+	return items, total, nil
 }
