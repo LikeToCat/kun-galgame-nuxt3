@@ -1887,11 +1887,21 @@ func (h *GalgameHandler) GetAllRatings(c *fiber.Ctx) error {
 // GetSeriesList wraps wiki /series, transforming response for frontend.
 // GET /api/galgame-series
 func (h *GalgameHandler) GetSeriesList(c *fiber.Ctx) error {
-	query := make(url.Values)
-	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
-		query.Set(string(key), string(value))
-	})
+	var req struct {
+		Page  int `query:"page" validate:"min=1"`
+		Limit int `query:"limit" validate:"min=1,max=50"`
+	}
+	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
+	}
 
+	// Fetch all series from wiki (typically < 200, safe to fetch all)
+	// so we can filter by content_limit before pagination.
+	query := url.Values{
+		"page":    {"1"},
+		"limit":   {"500"},
+		"include": {"galgame"},
+	}
 	data, appErr := h.galgameClient.Get(c.Context(), "/series", query)
 	if appErr != nil {
 		return response.Error(c, appErr)
@@ -1906,12 +1916,13 @@ func (h *GalgameHandler) GetSeriesList(c *fiber.Ctx) error {
 		ContentLimit  string `json:"content_limit"`
 	}
 	type wikiSeries struct {
-		ID          int           `json:"id"`
-		Name        string        `json:"name"`
-		Description string        `json:"description"`
-		Galgame     []wikiGalgame `json:"galgame"`
-		Created     string        `json:"created"`
-		Updated     string        `json:"updated"`
+		ID           int           `json:"id"`
+		Name         string        `json:"name"`
+		Description  string        `json:"description"`
+		Galgame      []wikiGalgame `json:"galgame"`
+		GalgameCount int           `json:"galgame_count"`
+		Created      string        `json:"created"`
+		Updated      string        `json:"updated"`
 	}
 	var parsed struct {
 		Items []wikiSeries `json:"items"`
@@ -1921,36 +1932,94 @@ func (h *GalgameHandler) GetSeriesList(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal("解析 Wiki 响应失败"))
 	}
 
-	series := make([]fiber.Map, len(parsed.Items))
-	for i, s := range parsed.Items {
-		isNSFW := false
-		samples := make([]fiber.Map, 0, min(len(s.Galgame), 4))
-		for j, g := range s.Galgame {
-			if g.ContentLimit == "nsfw" {
-				isNSFW = true
-			}
-			if j < 4 {
-				samples = append(samples, fiber.Map{
-					"name": fiber.Map{
-						"en-us": g.NameEnUs,
-						"ja-jp": g.NameJaJp,
-						"zh-cn": g.NameZhCn,
-						"zh-tw": g.NameZhTw,
-					},
-					"banner": g.Banner,
-				})
+	// For series missing galgame data, fetch detail individually
+	for i := range parsed.Items {
+		if len(parsed.Items[i].Galgame) == 0 && parsed.Items[i].GalgameCount > 0 {
+			detail, detailErr := h.galgameClient.Get(
+				c.Context(),
+				fmt.Sprintf("/series/%d", parsed.Items[i].ID),
+				nil,
+			)
+			if detailErr == nil {
+				var detailParsed struct {
+					Galgame []wikiGalgame `json:"galgame"`
+				}
+				if json.Unmarshal(detail, &detailParsed) == nil {
+					parsed.Items[i].Galgame = detailParsed.Galgame
+				}
 			}
 		}
-		series[i] = fiber.Map{
+	}
+
+	isSFW := utils.IsSFW(c)
+
+	series := make([]fiber.Map, 0, len(parsed.Items))
+	for _, s := range parsed.Items {
+		// Filter galgame by content_limit when in SFW mode
+		var filtered []wikiGalgame
+		if isSFW {
+			for _, g := range s.Galgame {
+				if g.ContentLimit == "sfw" {
+					filtered = append(filtered, g)
+				}
+			}
+			// Skip series with no SFW games
+			if len(filtered) == 0 {
+				continue
+			}
+		} else {
+			filtered = s.Galgame
+		}
+
+		isNSFW := false
+		for _, g := range filtered {
+			if g.ContentLimit == "nsfw" {
+				isNSFW = true
+				break
+			}
+		}
+
+		samples := make([]fiber.Map, 0, min(len(filtered), 4))
+		for j, g := range filtered {
+			if j >= 4 {
+				break
+			}
+			samples = append(samples, fiber.Map{
+				"name": fiber.Map{
+					"en-us": g.NameEnUs,
+					"ja-jp": g.NameJaJp,
+					"zh-cn": g.NameZhCn,
+					"zh-tw": g.NameZhTw,
+				},
+				"banner": g.Banner,
+			})
+		}
+
+		galgameCount := s.GalgameCount
+		if isSFW {
+			galgameCount = len(filtered)
+		}
+
+		series = append(series, fiber.Map{
 			"id":             s.ID,
 			"name":           s.Name,
 			"description":    s.Description,
 			"isNSFW":         isNSFW,
 			"sampleGalgame":  samples,
-			"galgameCount":   len(s.Galgame),
+			"galgameCount":   galgameCount,
 			"created":        s.Created,
 			"updated":        s.Updated,
-		}
+		})
+	}
+
+	// Paginate in Go after filtering
+	total := int64(len(series))
+	start := (req.Page - 1) * req.Limit
+	if start >= len(series) {
+		series = []fiber.Map{}
+	} else {
+		end := min(start+req.Limit, len(series))
+		series = series[start:end]
 	}
 
 	return c.JSON(fiber.Map{
@@ -1958,8 +2027,130 @@ func (h *GalgameHandler) GetSeriesList(c *fiber.Ctx) error {
 		"message": "成功",
 		"data": fiber.Map{
 			"series": series,
-			"total":  parsed.Total,
+			"total":  total,
 		},
+	})
+}
+
+// GetSeriesDetail wraps wiki /series/:id, transforming galgame fields.
+// GET /api/galgame-series/:id
+func (h *GalgameHandler) GetSeriesDetail(c *fiber.Ctx) error {
+	sid := c.Params("id")
+
+	data, appErr := h.galgameClient.Get(c.Context(), "/series/"+sid, nil)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	type wikiGalgame struct {
+		ID                 int    `json:"id"`
+		VndbID             string `json:"vndb_id"`
+		NameEnUs           string `json:"name_en_us"`
+		NameJaJp           string `json:"name_ja_jp"`
+		NameZhCn           string `json:"name_zh_cn"`
+		NameZhTw           string `json:"name_zh_tw"`
+		Banner             string `json:"banner"`
+		ContentLimit       string `json:"content_limit"`
+		View               int    `json:"view"`
+		ResourceUpdateTime string `json:"resource_update_time"`
+		UserID             int    `json:"user_id"`
+	}
+	var parsed struct {
+		ID          int           `json:"id"`
+		Name        string        `json:"name"`
+		Description string        `json:"description"`
+		Galgame     []wikiGalgame `json:"galgame"`
+		Created     string        `json:"created"`
+		Updated     string        `json:"updated"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return response.Error(c, errors.ErrInternal("解析 Wiki 响应失败"))
+	}
+
+	// Filter by NSFW setting
+	isSFW := utils.IsSFW(c)
+	var filtered []wikiGalgame
+	if isSFW {
+		for _, g := range parsed.Galgame {
+			if g.ContentLimit == "sfw" {
+				filtered = append(filtered, g)
+			}
+		}
+	} else {
+		filtered = parsed.Galgame
+	}
+
+	isNSFW := false
+	for _, g := range filtered {
+		if g.ContentLimit == "nsfw" {
+			isNSFW = true
+			break
+		}
+	}
+
+	// Batch load local data (view, likeCount)
+	galgameIDs := make([]int, len(filtered))
+	userIDs := make([]int, len(filtered))
+	for i, g := range filtered {
+		galgameIDs[i] = g.ID
+		userIDs[i] = g.UserID
+	}
+
+	var users []userModel.UserBrief
+	if len(userIDs) > 0 {
+		h.db.Where("id IN ?", userIDs).Find(&users)
+	}
+	userMap := make(map[int]userModel.UserBrief, len(users))
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	type localRow struct {
+		ID        int `gorm:"column:id"`
+		View      int `gorm:"column:view"`
+		LikeCount int `gorm:"column:like_count"`
+	}
+	var locals []localRow
+	if len(galgameIDs) > 0 {
+		h.db.Table("galgame").Select("id, view, like_count").
+			Where("id IN ?", galgameIDs).Scan(&locals)
+	}
+	localMap := make(map[int]localRow, len(locals))
+	for _, l := range locals {
+		localMap[l.ID] = l
+	}
+
+	samples := make([]fiber.Map, 0, min(len(filtered), 5))
+	galgameCards := make([]fiber.Map, len(filtered))
+	for i, g := range filtered {
+		nameMap := fiber.Map{
+			"en-us": g.NameEnUs, "ja-jp": g.NameJaJp,
+			"zh-cn": g.NameZhCn, "zh-tw": g.NameZhTw,
+		}
+		if i < 5 {
+			samples = append(samples, fiber.Map{
+				"name": nameMap, "banner": g.Banner,
+			})
+		}
+		l := localMap[g.ID]
+		galgameCards[i] = fiber.Map{
+			"id": g.ID, "name": nameMap, "banner": g.Banner,
+			"user": userMap[g.UserID], "contentLimit": g.ContentLimit,
+			"view": l.View, "likeCount": l.LikeCount,
+			"resourceUpdateTime": g.ResourceUpdateTime,
+			"platform": []string{}, "language": []string{},
+		}
+	}
+
+	return response.OK(c, fiber.Map{
+		"id": parsed.ID, "name": parsed.Name,
+		"description":   parsed.Description,
+		"isNSFW":        isNSFW,
+		"sampleGalgame": samples,
+		"galgameCount":  len(filtered),
+		"galgame":       galgameCards,
+		"created":       parsed.Created,
+		"updated":       parsed.Updated,
 	})
 }
 

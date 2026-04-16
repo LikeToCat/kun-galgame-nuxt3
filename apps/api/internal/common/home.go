@@ -6,6 +6,7 @@ import (
 	galgameClient "kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
+	"kun-galgame-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -85,8 +86,7 @@ type HomeResponse struct {
 // GetHome returns homepage data: galgames + topics.
 // GET /api/home
 func (h *HomeHandler) GetHome(c *fiber.Ctx) error {
-	nsfw := c.Cookies("kun_content_limit", "sfw")
-	isSFW := nsfw == "sfw"
+	isSFW := utils.IsSFW(c)
 
 	galgames, err := h.getHomeGalgames(c, isSFW)
 	if err != nil {

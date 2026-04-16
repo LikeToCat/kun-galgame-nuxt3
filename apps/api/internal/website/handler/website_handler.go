@@ -543,13 +543,62 @@ func (h *WebsiteHandler) GetWebsiteCategory(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrNotFound("未找到该分类"))
 	}
 
-	var websites []model.GalgameWebsite
-	h.db.Where("category_id = ?", category.ID).Find(&websites)
+	type wsRow struct {
+		ID          int    `gorm:"column:id"`
+		Name        string `gorm:"column:name"`
+		URL         string `gorm:"column:url"`
+		Description string `gorm:"column:description"`
+		Icon        string `gorm:"column:icon"`
+		AgeLimit    string `gorm:"column:age_limit"`
+	}
+	var rows []wsRow
+	h.db.Table("galgame_website").
+		Select("id, name, url, description, icon, age_limit").
+		Where("category_id = ?", category.ID).Scan(&rows)
+
+	websiteIDs := make([]int, len(rows))
+	for i, r := range rows {
+		websiteIDs[i] = r.ID
+	}
+
+	// Tag level sums
+	type tagSum struct {
+		WebsiteID int
+		Total     int
+	}
+	var tagSums []tagSum
+	if len(websiteIDs) > 0 {
+		h.db.Table("galgame_website_tag_relation r").
+			Select("r.galgame_website_id AS website_id, COALESCE(SUM(t.level), 0) AS total").
+			Joins("JOIN galgame_website_tag t ON t.id = r.galgame_website_tag_id").
+			Where("r.galgame_website_id IN ?", websiteIDs).
+			Group("r.galgame_website_id").Scan(&tagSums)
+	}
+	levelMap := make(map[int]int, len(tagSums))
+	for _, ts := range tagSums {
+		levelMap[ts.WebsiteID] = ts.Total
+	}
+
+	cards := make([]fiber.Map, len(rows))
+	for i, r := range rows {
+		lvl := levelMap[r.ID]
+		cards[i] = fiber.Map{
+			"id": r.ID, "name": r.Name, "description": r.Description,
+			"domain": r.URL, "ageLimit": r.AgeLimit,
+			"level": lvl, "icon": r.Icon, "price": lvl,
+			"category": category.Name,
+		}
+	}
 
 	return response.OK(c, fiber.Map{
-		"category":     category,
-		"websites":     websites,
-		"websiteCount": len(websites),
+		"id":           category.ID,
+		"name":         category.Name,
+		"label":        category.Label,
+		"description":  category.Description,
+		"websiteCount": len(rows),
+		"websites":     cards,
+		"created":      category.CreatedAt,
+		"updated":      category.UpdatedAt,
 	})
 }
 
@@ -583,6 +632,100 @@ func (h *WebsiteHandler) GetWebsiteTags(c *fiber.Ctx) error {
 	var tags []model.GalgameWebsiteTag
 	h.db.Order("id ASC").Find(&tags)
 	return response.OK(c, tags)
+}
+
+// GetWebsiteTagDetail returns a tag with its websites.
+// GET /api/website-tag/:name
+func (h *WebsiteHandler) GetWebsiteTagDetail(c *fiber.Ctx) error {
+	name := c.Params("name")
+	var tag model.GalgameWebsiteTag
+	if err := h.db.Where("name = ?", name).First(&tag).Error; err != nil {
+		return response.Error(c, errors.ErrNotFound("未找到该标签"))
+	}
+
+	// Find websites with this tag
+	var rels []model.GalgameWebsiteTagRelation
+	h.db.Where("galgame_website_tag_id = ?", tag.ID).Find(&rels)
+
+	websiteIDs := make([]int, len(rels))
+	for i, r := range rels {
+		websiteIDs[i] = r.GalgameWebsiteID
+	}
+
+	type wsRow struct {
+		ID          int    `gorm:"column:id"`
+		Name        string `gorm:"column:name"`
+		URL         string `gorm:"column:url"`
+		Description string `gorm:"column:description"`
+		Icon        string `gorm:"column:icon"`
+		AgeLimit    string `gorm:"column:age_limit"`
+		CategoryID  int    `gorm:"column:category_id"`
+	}
+	var websites []wsRow
+	if len(websiteIDs) > 0 {
+		h.db.Table("galgame_website").
+			Select("id, name, url, description, icon, age_limit, category_id").
+			Where("id IN ?", websiteIDs).Scan(&websites)
+	}
+
+	// Category names
+	catIDs := make([]int, len(websites))
+	for i, w := range websites {
+		catIDs[i] = w.CategoryID
+	}
+	var cats []struct {
+		ID   int
+		Name string
+	}
+	if len(catIDs) > 0 {
+		h.db.Table("galgame_website_category").
+			Select("id, name").Where("id IN ?", catIDs).Scan(&cats)
+	}
+	catMap := make(map[int]string, len(cats))
+	for _, ct := range cats {
+		catMap[ct.ID] = ct.Name
+	}
+
+	// Tag level sums per website
+	type tagSum struct {
+		WebsiteID int
+		Total     int
+	}
+	var tagSums []tagSum
+	if len(websiteIDs) > 0 {
+		h.db.Table("galgame_website_tag_relation r").
+			Select("r.galgame_website_id AS website_id, COALESCE(SUM(t.level), 0) AS total").
+			Joins("JOIN galgame_website_tag t ON t.id = r.galgame_website_tag_id").
+			Where("r.galgame_website_id IN ?", websiteIDs).
+			Group("r.galgame_website_id").Scan(&tagSums)
+	}
+	levelMap := make(map[int]int, len(tagSums))
+	for _, ts := range tagSums {
+		levelMap[ts.WebsiteID] = ts.Total
+	}
+
+	cards := make([]fiber.Map, len(websites))
+	for i, w := range websites {
+		lvl := levelMap[w.ID]
+		cards[i] = fiber.Map{
+			"id": w.ID, "name": w.Name, "description": w.Description,
+			"domain": w.URL, "ageLimit": w.AgeLimit,
+			"level": lvl, "icon": w.Icon, "price": lvl,
+			"category": catMap[w.CategoryID],
+		}
+	}
+
+	return response.OK(c, fiber.Map{
+		"id":           tag.ID,
+		"name":         tag.Name,
+		"label":        tag.Label,
+		"level":        tag.Level,
+		"description":  tag.Description,
+		"websiteCount": len(websites),
+		"websites":     cards,
+		"created":      tag.CreatedAt,
+		"updated":      tag.UpdatedAt,
+	})
 }
 
 // CreateWebsiteTag creates a website tag.

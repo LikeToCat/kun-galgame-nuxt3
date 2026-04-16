@@ -64,6 +64,7 @@ func (a *App) setupRoutes() {
 	// Website (public reads)
 	api.Get("/website-category/:name", a.WebsiteHandler.GetWebsiteCategory)
 	api.Get("/website-tag", a.WebsiteHandler.GetWebsiteTags)
+	api.Get("/website-tag/:name", a.WebsiteHandler.GetWebsiteTagDetail)
 
 	// Update (public reads)
 	api.Get("/update/history", a.UpdateHandler.GetHistory)
@@ -120,7 +121,7 @@ func (a *App) setupRoutes() {
 	api.Get("/galgame-engine/:name", a.GalgameHandler.ProxyGet)
 	api.Get("/galgame-series", a.GalgameHandler.GetSeriesList)
 	api.Get("/galgame-series/search", a.GalgameHandler.ProxyGet)
-	api.Get("/galgame-series/:id", a.GalgameHandler.ProxyGet)
+	api.Get("/galgame-series/:id", a.GalgameHandler.GetSeriesDetail)
 	api.Get("/galgame-resource", a.GalgameHandler.GetResourceList)
 
 	// ════════════════════════════════════════════
