@@ -54,8 +54,7 @@ func (s *PollService) CreatePoll(
 
 	var deadline *time.Time
 	if req.Deadline != nil {
-		t, err := time.Parse(time.RFC3339, *req.Deadline)
-		if err == nil {
+		if t, err := time.Parse(time.RFC3339, *req.Deadline); err == nil {
 			deadline = &t
 		}
 	}
@@ -74,21 +73,20 @@ func (s *PollService) CreatePoll(
 			TopicID:          req.TopicID,
 			UserID:           uid,
 		}
-		if err := tx.Create(poll).Error; err != nil {
+		if err := s.pollRepo.CreatePoll(tx, poll); err != nil {
 			return err
 		}
 
 		for _, opt := range req.Options {
-			if err := tx.Create(&topicModel.TopicPollOption{
+			if err := s.pollRepo.CreatePollOption(tx, &topicModel.TopicPollOption{
 				Text:   opt.Text,
 				PollID: poll.ID,
-			}).Error; err != nil {
+			}); err != nil {
 				return err
 			}
 		}
 
-		return tx.Model(&topicModel.Topic{}).Where("id = ?", req.TopicID).
-			Updates(map[string]any{"status_update_time": time.Now()}).Error
+		return s.pollRepo.TouchTopicStatusUpdateTime(tx, req.TopicID, time.Now())
 	})
 
 	if txErr != nil {
@@ -111,21 +109,15 @@ func (s *PollService) GetPollsByTopic(
 		return nil, errors.ErrInternal("获取投票失败")
 	}
 
-	uid := 0
-	role := 0
+	uid, role := 0, 0
 	if userInfo != nil {
 		uid = userInfo.UID
 		role = userInfo.Role
 	}
 
-	var responses []dto.TopicPollResponse
+	responses := make([]dto.TopicPollResponse, 0, len(polls))
 	for _, poll := range polls {
-		resp := s.buildPollResponse(&poll, uid, role)
-		responses = append(responses, resp)
-	}
-
-	if responses == nil {
-		responses = []dto.TopicPollResponse{}
+		responses = append(responses, s.buildPollResponse(&poll, uid, role))
 	}
 	return responses, nil
 }
@@ -156,40 +148,38 @@ func (s *PollService) Vote(
 	}
 	if poll.Type == "multiple" {
 		if len(req.OptionIDArray) < poll.MinChoice {
-			return errors.ErrBadRequest("至少选择 " + itoa(poll.MinChoice) + " 个选项")
+			return errors.ErrBadRequest("至少选择 " + fmt.Sprintf("%d", poll.MinChoice) + " 个选项")
 		}
 		if len(req.OptionIDArray) > poll.MaxChoice {
-			return errors.ErrBadRequest("最多选择 " + itoa(poll.MaxChoice) + " 个选项")
+			return errors.ErrBadRequest("最多选择 " + fmt.Sprintf("%d", poll.MaxChoice) + " 个选项")
 		}
 	}
 
-	// Check previous votes
 	hasVoted, _ := s.pollRepo.HasUserVoted(req.PollID, uid)
 	if hasVoted && !poll.CanChangeVote {
 		return errors.ErrBadRequest("该投票不允许修改投票结果")
 	}
 
 	txErr := s.pollRepo.DB().Transaction(func(tx *gorm.DB) error {
-		// Delete previous votes and decrement counts
 		if hasVoted {
 			oldOptionIDs, _ := s.pollRepo.FindUserVoteOptionIDs(req.PollID, uid)
-			tx.Where("poll_id = ? AND user_id = ?", req.PollID, uid).
-				Delete(&topicModel.TopicPollVote{})
+			if err := s.pollRepo.DeleteUserVotes(tx, req.PollID, uid); err != nil {
+				return err
+			}
 			for _, oid := range oldOptionIDs {
-				tx.Model(&topicModel.TopicPollOption{}).Where("id = ?", oid).
-					Update("vote_count", gorm.Expr("vote_count - 1"))
+				if err := s.pollRepo.AdjustOptionVoteCount(tx, oid, -1); err != nil {
+					return err
+				}
 			}
 		}
 
-		// Create new votes and increment counts
 		for _, optionID := range req.OptionIDArray {
-			tx.Create(&topicModel.TopicPollVote{
-				PollID:   req.PollID,
-				OptionID: optionID,
-				UserID:   uid,
-			})
-			tx.Model(&topicModel.TopicPollOption{}).Where("id = ?", optionID).
-				Update("vote_count", gorm.Expr("vote_count + 1"))
+			if err := s.pollRepo.CreateVote(tx, req.PollID, optionID, uid); err != nil {
+				return err
+			}
+			if err := s.pollRepo.AdjustOptionVoteCount(tx, optionID, 1); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -217,9 +207,7 @@ func (s *PollService) DeletePoll(
 	}
 
 	txErr := s.pollRepo.DB().Transaction(func(tx *gorm.DB) error {
-		tx.Where("poll_id = ?", pollID).Delete(&topicModel.TopicPollVote{})
-		tx.Where("poll_id = ?", pollID).Delete(&topicModel.TopicPollOption{})
-		return tx.Delete(&topicModel.TopicPoll{}, pollID).Error
+		return s.pollRepo.DeletePollCascade(tx, pollID)
 	})
 
 	if txErr != nil {
@@ -242,8 +230,7 @@ func (s *PollService) GetVoteLog(
 		return nil, 0, errors.ErrNotFound("未找到该投票")
 	}
 
-	uid := 0
-	role := 0
+	uid, role := 0, 0
 	if userInfo != nil {
 		uid = userInfo.UID
 		role = userInfo.Role
@@ -268,94 +255,4 @@ func (s *PollService) GetVoteLog(
 		}
 	}
 	return entries, total, nil
-}
-
-// ──────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────
-
-func (s *PollService) buildPollResponse(poll *topicModel.TopicPoll, uid, role int) dto.TopicPollResponse {
-	options, _ := s.pollRepo.FindOptionsByPollID(poll.ID)
-	hasVoted, _ := s.pollRepo.HasUserVoted(poll.ID, uid)
-	canView := canViewResults(poll, uid, role, hasVoted)
-
-	var userVotedOptionIDs map[int]bool
-	if uid > 0 {
-		votedIDs, _ := s.pollRepo.FindUserVoteOptionIDs(poll.ID, uid)
-		userVotedOptionIDs = make(map[int]bool, len(votedIDs))
-		for _, id := range votedIDs {
-			userVotedOptionIDs[id] = true
-		}
-	}
-
-	optionResponses := make([]dto.PollOptionResponse, len(options))
-	for i, opt := range options {
-		var voteCount *int
-		if canView {
-			vc := opt.VoteCount
-			voteCount = &vc
-		}
-		optionResponses[i] = dto.PollOptionResponse{
-			ID:        opt.ID,
-			Text:      opt.Text,
-			VoteCount: voteCount,
-			IsVoted:   userVotedOptionIDs[opt.ID],
-		}
-	}
-
-	var voters []dto.KunUser
-	var votersCount int
-	var totalVoteCount *int
-	if canView {
-		if !poll.IsAnonymous {
-			voters, _ = s.pollRepo.FindDistinctVoters(poll.ID, 5)
-		}
-		vc, _ := s.pollRepo.CountDistinctVoters(poll.ID)
-		votersCount = vc
-		tc, _ := s.pollRepo.CountTotalVotes(poll.ID)
-		totalVoteCount = &tc
-	}
-	if voters == nil {
-		voters = []dto.KunUser{}
-	}
-
-	// Fetch poll creator user info
-	var creator dto.KunUser
-	s.pollRepo.DB().Table(`"user"`).Select("id, name, avatar").
-		Where("id = ?", poll.UserID).Scan(&creator)
-
-	return dto.TopicPollResponse{
-		ID: poll.ID, Title: poll.Title, Description: poll.Description,
-		MinChoice: poll.MinChoice, MaxChoice: poll.MaxChoice,
-		Deadline: poll.Deadline, Type: poll.Type, Status: poll.Status,
-		ResultVisibility: poll.ResultVisibility,
-		IsAnonymous: poll.IsAnonymous, CanChangeVote: poll.CanChangeVote,
-		TopicID: poll.TopicID, Created: poll.CreatedAt, Updated: poll.UpdatedAt,
-		User: creator, Options: optionResponses,
-		HasVoted: hasVoted, Voters: voters,
-		VotersCount: votersCount, VoteCount: totalVoteCount,
-	}
-}
-
-func canViewResults(poll *topicModel.TopicPoll, uid, role int, hasVoted bool) bool {
-	if uid == poll.UserID || role > 1 {
-		return true
-	}
-	isPollFinished := poll.Status == "closed" ||
-		(poll.Deadline != nil && time.Now().After(*poll.Deadline))
-
-	switch poll.ResultVisibility {
-	case "always":
-		return true
-	case "after_vote":
-		return hasVoted
-	case "after_deadline":
-		return isPollFinished
-	default:
-		return false
-	}
-}
-
-func itoa(n int) string {
-	return fmt.Sprintf("%d", n)
 }

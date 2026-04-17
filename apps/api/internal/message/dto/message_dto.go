@@ -13,12 +13,6 @@ type ListMessagesRequest struct {
 	SortOrder string `query:"sortOrder" validate:"required,oneof=asc desc"`
 }
 
-type ChatHistoryRequest struct {
-	RoomID    string `query:"roomId" validate:"required"`
-	Page      int    `query:"page" validate:"min=1"`
-	Limit     int    `query:"limit" validate:"min=1,max=50"`
-}
-
 // ──────────────────────────────────────────
 // Responses
 // ──────────────────────────────────────────
@@ -51,12 +45,4 @@ type SystemMessageResponse struct {
 	Content map[string]string `json:"content"`
 	Admin   KunUser `json:"admin"`
 	Created time.Time `json:"created"`
-}
-
-type NavItem struct {
-	Type          string  `json:"type"`
-	TotalCount    int64   `json:"totalCount"`
-	UnreadCount   int64   `json:"unreadCount"`
-	LatestContent string  `json:"latestContent"`
-	LatestTime    *time.Time `json:"latestTime"`
 }

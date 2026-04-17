@@ -14,15 +14,11 @@ import (
 )
 
 type ReplyHandler struct {
-	replyService   *service.ReplyService
-	commentService *service.CommentService
+	replyService *service.ReplyService
 }
 
-func NewReplyHandler(
-	replyService *service.ReplyService,
-	commentService *service.CommentService,
-) *ReplyHandler {
-	return &ReplyHandler{replyService: replyService, commentService: commentService}
+func NewReplyHandler(replyService *service.ReplyService) *ReplyHandler {
+	return &ReplyHandler{replyService: replyService}
 }
 
 // GetReplies returns paginated reply list for a topic.
@@ -186,67 +182,4 @@ func (h *ReplyHandler) PinReply(c *fiber.Ctx) error {
 	}
 
 	return response.OKMessage(c, "操作成功")
-}
-
-// CreateComment creates a comment on a reply.
-// POST /api/topic/:tid/comment
-func (h *ReplyHandler) CreateComment(c *fiber.Ctx) error {
-	user, appErr := middleware.MustGetUser(c)
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-
-	var req dto.CreateCommentRequest
-	if appErr := utils.ParseAndValidate(c, &req); appErr != nil {
-		return response.Error(c, appErr)
-	}
-
-	if appErr := h.commentService.CreateComment(
-		c.Context(), user.UID,
-		req.TopicID, req.ReplyID, req.TargetUserID, req.Content,
-	); appErr != nil {
-		return response.Error(c, appErr)
-	}
-
-	return response.OKMessage(c, "评论发表成功")
-}
-
-// ToggleCommentLike toggles like on a comment.
-// PUT /api/topic/:tid/comment/like
-func (h *ReplyHandler) ToggleCommentLike(c *fiber.Ctx) error {
-	user, appErr := middleware.MustGetUser(c)
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-
-	var req dto.CommentInteractionRequest
-	if appErr := utils.ParseAndValidate(c, &req); appErr != nil {
-		return response.Error(c, appErr)
-	}
-
-	if appErr := h.commentService.ToggleCommentLike(c.Context(), user.UID, req.CommentID); appErr != nil {
-		return response.Error(c, appErr)
-	}
-
-	return response.OKMessage(c, "操作成功")
-}
-
-// DeleteComment deletes a comment.
-// DELETE /api/topic/:tid/comment
-func (h *ReplyHandler) DeleteComment(c *fiber.Ctx) error {
-	user, appErr := middleware.MustGetUser(c)
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-
-	commentID, err := strconv.Atoi(c.Query("commentId"))
-	if err != nil {
-		return response.Error(c, errors.ErrBadRequest("无效的评论 ID"))
-	}
-
-	if appErr := h.commentService.DeleteComment(c.Context(), user.UID, user.Role, commentID); appErr != nil {
-		return response.Error(c, appErr)
-	}
-
-	return response.OKMessage(c, "评论已删除")
 }

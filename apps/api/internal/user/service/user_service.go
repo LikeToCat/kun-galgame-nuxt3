@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"strings"
 
+	galgameClient "kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/internal/user/dto"
 	"kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
@@ -13,13 +14,32 @@ import (
 )
 
 type UserService struct {
-	userRepo *repository.UserRepository
-	rdb      *redis.Client
+	userRepo      *repository.UserRepository
+	userStatsRepo *repository.UserStatsRepository
+	userBriefRepo *repository.UserBriefRepository
+	rdb           *redis.Client
+	wikiClient    *galgameClient.GalgameClient
 }
 
-func NewUserService(userRepo *repository.UserRepository, rdb *redis.Client) *UserService {
-	return &UserService{userRepo: userRepo, rdb: rdb}
+func NewUserService(
+	userRepo *repository.UserRepository,
+	userStatsRepo *repository.UserStatsRepository,
+	userBriefRepo *repository.UserBriefRepository,
+	rdb *redis.Client,
+	wikiClient *galgameClient.GalgameClient,
+) *UserService {
+	return &UserService{
+		userRepo:      userRepo,
+		userStatsRepo: userStatsRepo,
+		userBriefRepo: userBriefRepo,
+		rdb:           rdb,
+		wikiClient:    wikiClient,
+	}
 }
+
+// ──────────────────────────────────────────
+// Profile / account
+// ──────────────────────────────────────────
 
 func (s *UserService) GetUserProfile(ctx context.Context, uid int) (*dto.UserProfileDetail, *errors.AppError) {
 	user, err := s.userRepo.FindByID(uid)
@@ -34,12 +54,12 @@ func (s *UserService) GetUserProfile(ctx context.Context, uid int) (*dto.UserPro
 		}, nil
 	}
 
-	stats, err := s.userRepo.GetUserStats(uid)
+	stats, err := s.userStatsRepo.GetUserStats(uid)
 	if err != nil {
 		return nil, errors.ErrInternal("获取用户统计失败")
 	}
 
-	return &dto.UserProfileDetail{
+	profile := &dto.UserProfileDetail{
 		ID:          user.ID,
 		Name:        user.Name,
 		Avatar:      user.Avatar,
@@ -64,7 +84,16 @@ func (s *UserService) GetUserProfile(ctx context.Context, uid int) (*dto.UserPro
 		Dislike: stats.Dislike,
 
 		DailyTopicCount: stats.DailyTopicCount,
-	}, nil
+	}
+
+	// Enrich with wiki galgame stats (non-blocking — zero values on failure)
+	if wikiStats, err := s.wikiClient.GetUserStats(ctx, uid); err == nil && wikiStats != nil {
+		profile.Galgame = wikiStats.GalgameCreated
+		profile.DailyGalgameCount = wikiStats.GalgameCreatedToday
+		profile.ContributeGalgame = wikiStats.GalgameContributed
+	}
+
+	return profile, nil
 }
 
 func (s *UserService) CheckIn(ctx context.Context, uid int) (int, *errors.AppError) {
@@ -155,9 +184,9 @@ func (s *UserService) GetUserStatus(ctx context.Context, uid int) (*dto.UserStat
 		return nil, errors.ErrNotFound("未找到该用户")
 	}
 
-	unreadMessage, _ := s.userRepo.CountUnreadMessages(uid)
-	unreadSystem, _ := s.userRepo.CountUnreadSystemMessages()
-	unreadChat, _ := s.userRepo.CountUnreadChatMessages(uid)
+	unreadMessage, _ := s.userStatsRepo.CountUnreadMessages(uid)
+	unreadSystem, _ := s.userStatsRepo.CountUnreadSystemMessages()
+	unreadChat, _ := s.userStatsRepo.CountUnreadChatMessages(uid)
 
 	return &dto.UserStatusResponse{
 		Moemoepoints:  user.Moemoepoint,
@@ -172,57 +201,35 @@ func (s *UserService) UploadAvatar(ctx context.Context, uid int, avatarData []by
 	return "", errors.ErrBadRequest("头像上传功能正在迁移中")
 }
 
-func (s *UserService) GetUserGalgameIDs(ctx context.Context, uid int, req *dto.UserGalgamesRequest) ([]int, int64, *errors.AppError) {
-	ids, total, err := s.userRepo.FindUserGalgameIDs(uid, req.Type, req.Page, req.Limit)
+// ──────────────────────────────────────────
+// Floating hover card
+// ──────────────────────────────────────────
+
+func (s *UserService) GetFloatingCard(uid int) (*dto.FloatingCardResponse, *errors.AppError) {
+	user, err := s.userBriefRepo.FindFloatingUser(uid)
 	if err != nil {
-		return nil, 0, errors.ErrInternal("获取用户 Galgame 列表失败")
+		return nil, errors.ErrNotFound("未找到该用户")
 	}
-	return ids, total, nil
+	if user.Status == 1 {
+		return nil, errors.ErrNotFound("该用户已被封禁")
+	}
+
+	stats := s.userStatsRepo.FindFloatingStats(uid)
+	return &dto.FloatingCardResponse{
+		ID:                   user.ID,
+		Name:                 user.Name,
+		Avatar:               user.Avatar,
+		Moemoepoint:          user.Moemoepoint,
+		TopicCount:           stats.TopicCount,
+		TopicReplyCount:      stats.TopicReplyCount,
+		TopicCommentCount:    stats.TopicCommentCount,
+		GalgameResourceCount: stats.ResourceCount,
+	}, nil
 }
 
-func (s *UserService) GetUserTopics(ctx context.Context, uid int, req *dto.UserTopicsRequest) ([]dto.UserTopic, int64, *errors.AppError) {
-	items, total, err := s.userRepo.FindUserTopics(uid, req.Type, req.Page, req.Limit)
-	if err != nil {
-		return nil, 0, errors.ErrInternal("获取用户话题列表失败")
-	}
-	return items, total, nil
-}
-
-func (s *UserService) GetUserReplies(ctx context.Context, uid int, req *dto.UserRepliesRequest) ([]repository.UserReply, int64, *errors.AppError) {
-	items, total, err := s.userRepo.FindUserReplies(uid, req.Type, req.Page, req.Limit)
-	if err != nil {
-		return nil, 0, errors.ErrInternal("获取用户回复列表失败")
-	}
-	return items, total, nil
-}
-
-func (s *UserService) GetUserComments(ctx context.Context, uid int, req *dto.UserCommentsRequest) ([]repository.UserComment, int64, *errors.AppError) {
-	items, total, err := s.userRepo.FindUserComments(uid, req.Type, req.Page, req.Limit)
-	if err != nil {
-		return nil, 0, errors.ErrInternal("获取用户评论列表失败")
-	}
-	return items, total, nil
-}
-
-func (s *UserService) GetUserResources(ctx context.Context, uid int, req *dto.UserResourcesRequest) ([]repository.UserResource, int64, *errors.AppError) {
-	items, total, err := s.userRepo.FindUserResources(uid, req.Type, req.Page, req.Limit)
-	if err != nil {
-		return nil, 0, errors.ErrInternal("获取用户资源列表失败")
-	}
-	return items, total, nil
-}
-
-func (s *UserService) GetResourceLinks(resourceIDs []int) (map[int][]string, error) {
-	return s.userRepo.FindResourceLinks(resourceIDs)
-}
-
-func (s *UserService) GetUserRatings(ctx context.Context, uid int, req *dto.UserRatingsRequest) ([]repository.UserRating, int64, *errors.AppError) {
-	items, total, err := s.userRepo.FindUserRatings(uid, req.Page, req.Limit)
-	if err != nil {
-		return nil, 0, errors.ErrInternal("获取用户评分列表失败")
-	}
-	return items, total, nil
-}
+// ──────────────────────────────────────────
+// Admin / shared
+// ──────────────────────────────────────────
 
 func (s *UserService) verifyCode(ctx context.Context, key, code string) (bool, error) {
 	stored, err := s.rdb.Get(ctx, key).Result()
@@ -247,4 +254,3 @@ func (s *UserService) DeleteUser(ctx context.Context, uid int) *errors.AppError 
 	}
 	return nil
 }
-

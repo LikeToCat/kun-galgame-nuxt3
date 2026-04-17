@@ -14,11 +14,18 @@ import (
 )
 
 type TopicHandler struct {
-	topicService *service.TopicService
+	topicService      *service.TopicService
+	topicWriteService *service.TopicWriteService
 }
 
-func NewTopicHandler(topicService *service.TopicService) *TopicHandler {
-	return &TopicHandler{topicService: topicService}
+func NewTopicHandler(
+	topicService *service.TopicService,
+	topicWriteService *service.TopicWriteService,
+) *TopicHandler {
+	return &TopicHandler{
+		topicService:      topicService,
+		topicWriteService: topicWriteService,
+	}
 }
 
 // GetList returns paginated topic list.
@@ -102,7 +109,7 @@ func (h *TopicHandler) Create(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	topicID, appErr := h.topicService.Create(c.Context(), user.UID, &req)
+	topicID, appErr := h.topicWriteService.Create(c.Context(), user.UID, &req)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
@@ -128,7 +135,7 @@ func (h *TopicHandler) Update(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	if appErr := h.topicService.Update(c.Context(), user.UID, user.Role, tid, &req); appErr != nil {
+	if appErr := h.topicWriteService.Update(c.Context(), user.UID, user.Role, tid, &req); appErr != nil {
 		return response.Error(c, appErr)
 	}
 
@@ -148,7 +155,7 @@ func (h *TopicHandler) ToggleLike(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("无效的话题 ID"))
 	}
 
-	if appErr := h.topicService.ToggleLike(c.Context(), user.UID, tid); appErr != nil {
+	if appErr := h.topicWriteService.ToggleLike(c.Context(), user.UID, tid); appErr != nil {
 		return response.Error(c, appErr)
 	}
 
@@ -168,7 +175,7 @@ func (h *TopicHandler) ToggleDislike(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("无��的话题 ID"))
 	}
 
-	if appErr := h.topicService.ToggleDislike(c.Context(), user.UID, tid); appErr != nil {
+	if appErr := h.topicWriteService.ToggleDislike(c.Context(), user.UID, tid); appErr != nil {
 		return response.Error(c, appErr)
 	}
 
@@ -188,7 +195,7 @@ func (h *TopicHandler) Upvote(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("无效��话�� ID"))
 	}
 
-	if appErr := h.topicService.Upvote(c.Context(), user.UID, tid); appErr != nil {
+	if appErr := h.topicWriteService.Upvote(c.Context(), user.UID, tid); appErr != nil {
 		return response.Error(c, appErr)
 	}
 
@@ -208,7 +215,7 @@ func (h *TopicHandler) ToggleFavorite(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("无效的话题 ID"))
 	}
 
-	if appErr := h.topicService.ToggleFavorite(c.Context(), user.UID, tid); appErr != nil {
+	if appErr := h.topicWriteService.ToggleFavorite(c.Context(), user.UID, tid); appErr != nil {
 		return response.Error(c, appErr)
 	}
 
@@ -228,7 +235,7 @@ func (h *TopicHandler) ToggleHide(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("���效的话题 ID"))
 	}
 
-	if appErr := h.topicService.ToggleHide(c.Context(), user.UID, user.Role, tid); appErr != nil {
+	if appErr := h.topicWriteService.ToggleHide(c.Context(), user.UID, user.Role, tid); appErr != nil {
 		return response.Error(c, appErr)
 	}
 
@@ -253,7 +260,7 @@ func (h *TopicHandler) SetBestAnswer(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	if appErr := h.topicService.SetBestAnswer(c.Context(), user.UID, tid, req.ReplyID); appErr != nil {
+	if appErr := h.topicWriteService.SetBestAnswer(c.Context(), user.UID, tid, req.ReplyID); appErr != nil {
 		return response.Error(c, appErr)
 	}
 

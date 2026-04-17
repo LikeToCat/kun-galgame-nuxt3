@@ -2,14 +2,10 @@ package middleware
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
-	"strings"
 	"time"
 
-	"kun-galgame-api/pkg/config"
+	"kun-galgame-api/internal/user/oauth"
 	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
 
@@ -40,7 +36,10 @@ type SessionData struct {
 
 // Auth creates a middleware that validates the session cookie.
 // It looks up the session in Redis and attaches UserInfo to the context.
-func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
+//
+// Take an *oauth.Client (the same one AuthService uses) so that token
+// refresh logic lives in exactly one place — see oauth.Client.RefreshOAuthToken.
+func Auth(rdb *redis.Client, oauthClient *oauth.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := c.Cookies("kun_session")
 		if token == "" {
@@ -65,7 +64,7 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 			locked, _ := rdb.SetNX(ctx, lockKey, "1", 10*time.Second).Result()
 			if locked {
 				defer rdb.Del(ctx, lockKey)
-				refreshed, refreshErr := refreshOAuthToken(oauthCfg, session.OAuthRefreshToken)
+				refreshed, refreshErr := oauthClient.RefreshOAuthToken(session.OAuthRefreshToken)
 				if refreshErr != nil {
 					slog.Warn("OAuth token 刷新失败", "error", refreshErr)
 					rdb.Del(ctx, "session:"+token)
@@ -100,7 +99,7 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 
 // OptionalAuth is like Auth but does not fail if no session is present.
 // If a valid session exists, UserInfo is attached; otherwise the request proceeds.
-func OptionalAuth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
+func OptionalAuth(rdb *redis.Client, _ *oauth.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := c.Cookies("kun_session")
 		if token == "" {
@@ -141,52 +140,3 @@ func MustGetUser(c *fiber.Ctx) (*UserInfo, *errors.AppError) {
 	return info, nil
 }
 
-type tokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
-}
-
-func refreshOAuthToken(cfg config.OAuthConfig, refreshToken string) (*tokenResponse, error) {
-	payload := map[string]string{
-		"grant_type":    "refresh_token",
-		"refresh_token": refreshToken,
-		"client_id":     cfg.ClientID,
-		"client_secret": cfg.ClientSecret,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("序列化刷新请求失败: %w", err)
-	}
-
-	resp, err := http.Post(
-		cfg.ServerURL+"/oauth/token",
-		"application/json",
-		strings.NewReader(string(body)),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OAuth token 刷新失败, 状态码: %d", resp.StatusCode)
-	}
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("读取刷新响应失败: %w", err)
-	}
-
-	var wrapper struct {
-		Code int            `json:"code"`
-		Data *tokenResponse `json:"data"`
-	}
-	if err := json.Unmarshal(respBody, &wrapper); err != nil {
-		return nil, fmt.Errorf("解析刷新响应失败: %w", err)
-	}
-	if wrapper.Code != 0 || wrapper.Data == nil {
-		return nil, fmt.Errorf("OAuth token 刷新失败: %s", string(respBody))
-	}
-	return wrapper.Data, nil
-}

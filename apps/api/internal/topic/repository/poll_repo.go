@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"kun-galgame-api/internal/topic/dto"
 	"kun-galgame-api/internal/topic/model"
 
@@ -117,4 +119,64 @@ func (r *PollRepository) FindVoteLogs(pollID, page, limit int) ([]VoteLogRow, in
 		Limit(limit).
 		Find(&rows).Error
 	return rows, total, err
+}
+
+// ──────────────────────────────────────────
+// Tx-aware write operations (for the service coordinator)
+// ──────────────────────────────────────────
+
+// CreatePoll inserts a TopicPoll row inside the caller tx.
+func (r *PollRepository) CreatePoll(tx *gorm.DB, poll *model.TopicPoll) error {
+	return tx.Create(poll).Error
+}
+
+// CreatePollOption inserts a TopicPollOption row inside the caller tx.
+func (r *PollRepository) CreatePollOption(tx *gorm.DB, opt *model.TopicPollOption) error {
+	return tx.Create(opt).Error
+}
+
+// TouchTopicStatusUpdateTime bumps topic.status_update_time for poll activity.
+func (r *PollRepository) TouchTopicStatusUpdateTime(tx *gorm.DB, topicID int, t time.Time) error {
+	return tx.Model(&model.Topic{}).Where("id = ?", topicID).
+		Updates(map[string]any{"status_update_time": t}).Error
+}
+
+// DeleteUserVotes removes all of a user's votes for a given poll.
+func (r *PollRepository) DeleteUserVotes(tx *gorm.DB, pollID, userID int) error {
+	return tx.Where("poll_id = ? AND user_id = ?", pollID, userID).
+		Delete(&model.TopicPollVote{}).Error
+}
+
+// AdjustOptionVoteCount adjusts topic_poll_option.vote_count by delta.
+func (r *PollRepository) AdjustOptionVoteCount(tx *gorm.DB, optionID, delta int) error {
+	return tx.Model(&model.TopicPollOption{}).Where("id = ?", optionID).
+		Update("vote_count", gorm.Expr("vote_count + ?", delta)).Error
+}
+
+// CreateVote inserts a TopicPollVote row inside the caller tx.
+func (r *PollRepository) CreateVote(tx *gorm.DB, pollID, optionID, userID int) error {
+	return tx.Create(&model.TopicPollVote{
+		PollID: pollID, OptionID: optionID, UserID: userID,
+	}).Error
+}
+
+// DeletePollCascade removes a poll's votes, options, then the poll row itself.
+func (r *PollRepository) DeletePollCascade(tx *gorm.DB, pollID int) error {
+	if err := tx.Where("poll_id = ?", pollID).Delete(&model.TopicPollVote{}).Error; err != nil {
+		return err
+	}
+	if err := tx.Where("poll_id = ?", pollID).Delete(&model.TopicPollOption{}).Error; err != nil {
+		return err
+	}
+	return tx.Delete(&model.TopicPoll{}, pollID).Error
+}
+
+// FindUserBrief loads a minimal user row (id, name, avatar) used when building
+// poll creator / voter DTOs. Duplicated in the topic module to avoid a
+// cross-module repo dependency for a tiny lookup.
+func (r *PollRepository) FindUserBrief(userID int) (dto.KunUser, error) {
+	var u dto.KunUser
+	err := r.db.Table(`"user"`).Select("id, name, avatar").
+		Where("id = ?", userID).Scan(&u).Error
+	return u, err
 }

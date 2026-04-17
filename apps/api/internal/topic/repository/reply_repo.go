@@ -2,10 +2,18 @@ package repository
 
 import (
 	"kun-galgame-api/internal/topic/model"
+	userModel "kun-galgame-api/internal/user/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
+// ReplyRepository owns topic-reply rows: CRUD, paginated lists, target links,
+// reply-level interactions (like/dislike + count adjustments), cascade delete
+// and the reply-author brief projection.
+//
+// Comment rows (TopicComment) have their own sibling repo in this package:
+//   - CommentRepository (comment_repo.go)
 type ReplyRepository struct {
 	db *gorm.DB
 }
@@ -136,19 +144,22 @@ func (r *ReplyRepository) FindTargetsByReplyIDs(replyIDs []int) (map[int][]Targe
 // ──────────────────────────────────────────
 
 func (r *ReplyRepository) FindReplyLikeStatus(uid int, replyIDs []int) (map[int]bool, error) {
-	return r.findInteractionStatus("topic_reply_like", "topic_reply_id", uid, replyIDs)
+	return findInteractionStatus(r.db, "topic_reply_like", "topic_reply_id", uid, replyIDs)
 }
 
 func (r *ReplyRepository) FindReplyDislikeStatus(uid int, replyIDs []int) (map[int]bool, error) {
-	return r.findInteractionStatus("topic_reply_dislike", "topic_reply_id", uid, replyIDs)
+	return findInteractionStatus(r.db, "topic_reply_dislike", "topic_reply_id", uid, replyIDs)
 }
 
-func (r *ReplyRepository) findInteractionStatus(table, fkCol string, uid int, ids []int) (map[int]bool, error) {
+// findInteractionStatus is shared by both ReplyRepository and CommentRepository
+// (see comment_repo.go) to resolve a user's boolean interaction state across
+// an ID batch.
+func findInteractionStatus(db *gorm.DB, table, fkCol string, uid int, ids []int) (map[int]bool, error) {
 	if len(ids) == 0 || uid == 0 {
 		return make(map[int]bool), nil
 	}
 	var foundIDs []int
-	err := r.db.Table(table).
+	err := db.Table(table).
 		Where("user_id = ? AND "+fkCol+" IN ?", uid, ids).
 		Pluck(fkCol, &foundIDs).Error
 	if err != nil {
@@ -159,56 +170,6 @@ func (r *ReplyRepository) findInteractionStatus(table, fkCol string, uid int, id
 		result[id] = true
 	}
 	return result, nil
-}
-
-// ────────────────────────────��─────────────
-// Comments (batch by reply IDs)
-// ──────────────────────────────────────────
-
-type CommentRow struct {
-	ID             int
-	TopicReplyID   int
-	TopicID        int
-	Content        string
-	UserID         int
-	UserName       string
-	UserAvatar     string
-	TargetUserID   int
-	TargetUserName string
-	TargetAvatar   string
-	LikeCount      int
-	CreatedAt      string
-}
-
-func (r *ReplyRepository) FindCommentsByReplyIDs(replyIDs []int) (map[int][]CommentRow, error) {
-	if len(replyIDs) == 0 {
-		return make(map[int][]CommentRow), nil
-	}
-	var rows []CommentRow
-	err := r.db.Table("topic_comment tc").
-		Select(`tc.id, tc.topic_reply_id, tc.topic_id, tc.content,
-			tc.user_id, u1.name AS user_name, u1.avatar AS user_avatar,
-			tc.target_user_id, u2.name AS target_user_name, u2.avatar AS target_avatar,
-			(SELECT COUNT(*) FROM topic_comment_like WHERE topic_comment_id = tc.id) AS like_count,
-			tc.created AS created_at`).
-		Joins(`LEFT JOIN "user" u1 ON u1.id = tc.user_id`).
-		Joins(`LEFT JOIN "user" u2 ON u2.id = tc.target_user_id`).
-		Where("tc.topic_reply_id IN ?", replyIDs).
-		Order("tc.created ASC").
-		Find(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(map[int][]CommentRow)
-	for _, row := range rows {
-		result[row.TopicReplyID] = append(result[row.TopicReplyID], row)
-	}
-	return result, nil
-}
-
-func (r *ReplyRepository) FindCommentLikeStatus(uid int, commentIDs []int) (map[int]bool, error) {
-	return r.findInteractionStatus("topic_comment_like", "topic_comment_id", uid, commentIDs)
 }
 
 // ──────────────────────────────────────────
@@ -276,17 +237,122 @@ func (r *ReplyRepository) CountReplyRelated(replyID int) (commentCount, likeCoun
 }
 
 // ──────────────────────────────────────────
-// Comment CRUD
+// LockUserForUpdate (shared helper used by both reply and comment services)
 // ──────────────────────────────────────────
 
-func (r *ReplyRepository) FindCommentByID(id int) (*model.TopicComment, error) {
-	var comment model.TopicComment
-	err := r.db.First(&comment, id).Error
-	return &comment, err
+// LockUserForUpdate acquires a FOR UPDATE row lock on the user row and
+// returns the currently-stored moemoepoint balance.
+func (r *ReplyRepository) LockUserForUpdate(tx *gorm.DB, userID int) (*userModel.User, error) {
+	var user userModel.User
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(&user, userID).Error
+	return &user, err
 }
 
-func (r *ReplyRepository) CountCommentLikes(commentID int) (int64, error) {
-	var count int64
-	err := r.db.Model(&model.TopicCommentLike{}).Where("topic_comment_id = ?", commentID).Count(&count).Error
-	return count, err
+// ──────────────────────────────────────────
+// Reply interaction helpers (for tx participation)
+// ──────────────────────────────────────────
+
+// FindByIDTx loads a reply inside a transaction.
+func (r *ReplyRepository) FindByIDTx(tx *gorm.DB, replyID int) (*model.TopicReply, error) {
+	var reply model.TopicReply
+	err := tx.First(&reply, replyID).Error
+	return &reply, err
+}
+
+// FindReplyLike returns an existing reply-like row (or ErrRecordNotFound).
+func (r *ReplyRepository) FindReplyLike(tx *gorm.DB, uid, replyID int) (*model.TopicReplyLike, error) {
+	var existing model.TopicReplyLike
+	err := tx.Where("user_id = ? AND topic_reply_id = ?", uid, replyID).First(&existing).Error
+	return &existing, err
+}
+
+// CreateReplyLike inserts a new reply-like row.
+func (r *ReplyRepository) CreateReplyLike(tx *gorm.DB, uid, replyID int) error {
+	return tx.Create(&model.TopicReplyLike{UserID: uid, TopicReplyID: replyID}).Error
+}
+
+// DeleteReplyLike removes a previously fetched reply-like row.
+func (r *ReplyRepository) DeleteReplyLike(tx *gorm.DB, like *model.TopicReplyLike) error {
+	return tx.Delete(like).Error
+}
+
+// FindReplyDislike returns an existing reply-dislike row (or ErrRecordNotFound).
+func (r *ReplyRepository) FindReplyDislike(tx *gorm.DB, uid, replyID int) (*model.TopicReplyDislike, error) {
+	var existing model.TopicReplyDislike
+	err := tx.Where("user_id = ? AND topic_reply_id = ?", uid, replyID).First(&existing).Error
+	return &existing, err
+}
+
+// CreateReplyDislike inserts a new reply-dislike row.
+func (r *ReplyRepository) CreateReplyDislike(tx *gorm.DB, uid, replyID int) error {
+	return tx.Create(&model.TopicReplyDislike{UserID: uid, TopicReplyID: replyID}).Error
+}
+
+// DeleteReplyDislike removes a previously fetched reply-dislike row.
+func (r *ReplyRepository) DeleteReplyDislike(tx *gorm.DB, dislike *model.TopicReplyDislike) error {
+	return tx.Delete(dislike).Error
+}
+
+// AdjustReplyLikeCount adjusts the topic_reply.like_count by `delta`.
+func (r *ReplyRepository) AdjustReplyLikeCount(tx *gorm.DB, replyID, delta int) error {
+	return tx.Model(&model.TopicReply{}).Where("id = ?", replyID).
+		Update("like_count", gorm.Expr("like_count + ?", delta)).Error
+}
+
+// AdjustReplyDislikeCount adjusts the topic_reply.dislike_count by `delta`.
+func (r *ReplyRepository) AdjustReplyDislikeCount(tx *gorm.DB, replyID, delta int) error {
+	return tx.Model(&model.TopicReply{}).Where("id = ?", replyID).
+		Update("dislike_count", gorm.Expr("dislike_count + ?", delta)).Error
+}
+
+// ──────────────────────────────────────────
+// Reply CRUD helpers (tx-aware)
+// ──────────────────────────────────────────
+
+// CreateReply inserts a TopicReply inside the caller tx.
+func (r *ReplyRepository) CreateReply(tx *gorm.DB, reply *model.TopicReply) error {
+	return tx.Create(reply).Error
+}
+
+// CreateReplyTarget inserts a TopicReplyTarget inside the caller tx.
+func (r *ReplyRepository) CreateReplyTarget(tx *gorm.DB, target *model.TopicReplyTarget) error {
+	return tx.Create(target).Error
+}
+
+// UpdateReplyContent updates content + edited timestamp for a reply.
+func (r *ReplyRepository) UpdateReplyContent(tx *gorm.DB, replyID int, fields map[string]any) error {
+	return tx.Model(&model.TopicReply{}).Where("id = ?", replyID).Updates(fields).Error
+}
+
+// DeleteReplyTargetsByReplyID removes all targets authored by this reply.
+func (r *ReplyRepository) DeleteReplyTargetsByReplyID(tx *gorm.DB, replyID int) error {
+	return tx.Where("reply_id = ?", replyID).Delete(&model.TopicReplyTarget{}).Error
+}
+
+// FindTargetReplyUserID returns the user_id of the target reply (used to
+// collect distinct notification recipients when creating a reply).
+func (r *ReplyRepository) FindTargetReplyUserID(tx *gorm.DB, replyID int) (int, error) {
+	var reply model.TopicReply
+	if err := tx.Select("user_id").First(&reply, replyID).Error; err != nil {
+		return 0, err
+	}
+	return reply.UserID, nil
+}
+
+// FindCommenterUser loads a minimal user row (id, name, avatar, moemoepoint)
+// for notification/reward purposes. Duplicated here (instead of importing the
+// user repo) to avoid a cross-module dependency for a tiny lookup.
+type CommenterUser struct {
+	ID          int
+	Name        string
+	Avatar      string
+	Moemoepoint int
+}
+
+func (r *ReplyRepository) FindCommenterUser(uid int) (*CommenterUser, error) {
+	var u CommenterUser
+	err := r.db.Table(`"user"`).Select("id, name, avatar, moemoepoint").
+		Where("id = ?", uid).Scan(&u).Error
+	return &u, err
 }

@@ -6,34 +6,37 @@ import (
 	"strings"
 	"time"
 
-	"kun-galgame-api/internal/infrastructure/markdown"
-
 	"kun-galgame-api/internal/constants"
-	msgModel "kun-galgame-api/internal/message/model"
 	"kun-galgame-api/internal/middleware"
 	"kun-galgame-api/internal/topic/dto"
 	topicModel "kun-galgame-api/internal/topic/model"
 	"kun-galgame-api/internal/topic/repository"
-	userModel "kun-galgame-api/internal/user/model"
 	"kun-galgame-api/pkg/errors"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type ReplyService struct {
-	replyRepo *repository.ReplyRepository
-	topicRepo *repository.TopicRepository
-	rdb       *redis.Client
+	replyRepo   *repository.ReplyRepository
+	commentRepo *repository.CommentRepository
+	topicRepo   *repository.TopicRepository
+	rdb         *redis.Client
+	helpers     InteractionHelpers
 }
 
 func NewReplyService(
 	replyRepo *repository.ReplyRepository,
+	commentRepo *repository.CommentRepository,
 	topicRepo *repository.TopicRepository,
 	rdb *redis.Client,
 ) *ReplyService {
-	return &ReplyService{replyRepo: replyRepo, topicRepo: topicRepo, rdb: rdb}
+	return &ReplyService{
+		replyRepo:   replyRepo,
+		commentRepo: commentRepo,
+		topicRepo:   topicRepo,
+		rdb:         rdb,
+	}
 }
 
 // ──────────────────────────────────────────
@@ -63,14 +66,11 @@ func (s *ReplyService) GetReplies(
 
 	// On page 1, prepend special replies
 	if req.Page == 1 && len(specialIDs) > 0 {
-		specialRows, err := s.replyRepo.FindRepliesByIDs(specialIDs)
-		if err == nil {
-			specialResponses := s.buildReplyResponses(specialRows, topic, userInfo)
-			result = append(result, specialResponses...)
+		if specialRows, err := s.replyRepo.FindRepliesByIDs(specialIDs); err == nil {
+			result = append(result, s.buildReplyResponses(specialRows, topic, userInfo)...)
 		}
 	}
 
-	// Regular replies (exclude special IDs)
 	regularRows, err := s.replyRepo.FindRepliesPaginated(
 		req.TopicID, specialIDs,
 		req.Page, req.Limit, req.SortOrder,
@@ -79,8 +79,7 @@ func (s *ReplyService) GetReplies(
 		return nil, errors.ErrInternal("获取回复列表失败")
 	}
 
-	regularResponses := s.buildReplyResponses(regularRows, topic, userInfo)
-	result = append(result, regularResponses...)
+	result = append(result, s.buildReplyResponses(regularRows, topic, userInfo)...)
 
 	if result == nil {
 		result = []dto.TopicReplyResponse{}
@@ -102,8 +101,7 @@ func (s *ReplyService) GetReplyDetail(
 		return nil, errors.ErrNotFound("未找到该回复")
 	}
 
-	reply := rows[0]
-	topic, _ := s.topicRepo.FindByID(reply.TopicID)
+	topic, _ := s.topicRepo.FindByID(rows[0].TopicID)
 	responses := s.buildReplyResponses(rows, topic, userInfo)
 	if len(responses) == 0 {
 		return nil, errors.ErrNotFound("未找到该回复")
@@ -125,7 +123,7 @@ func (s *ReplyService) CreateReply(
 		return nil, errors.ErrNotFound("未找到该话题")
 	}
 
-	validTargets := make([]dto.ReplyTarget, 0)
+	validTargets := make([]dto.ReplyTarget, 0, len(req.Targets))
 	for _, t := range req.Targets {
 		if strings.TrimSpace(t.Content) != "" {
 			validTargets = append(validTargets, t)
@@ -139,7 +137,6 @@ func (s *ReplyService) CreateReply(
 	var newReply *topicModel.TopicReply
 
 	txErr := s.replyRepo.DB().Transaction(func(tx *gorm.DB) error {
-		// Floor calculation INSIDE transaction
 		maxFloor, err := s.replyRepo.GetMaxFloor(tx, req.TopicID)
 		if err != nil {
 			return err
@@ -151,74 +148,45 @@ func (s *ReplyService) CreateReply(
 			Floor:   maxFloor + 1,
 			Content: req.Content,
 		}
-		if err := tx.Create(newReply).Error; err != nil {
+		if err := s.replyRepo.CreateReply(tx, newReply); err != nil {
 			return err
 		}
 
-		// Create targets
 		for _, t := range validTargets {
-			target := topicModel.TopicReplyTarget{
+			if err := s.replyRepo.CreateReplyTarget(tx, &topicModel.TopicReplyTarget{
 				ReplyID:       newReply.ID,
 				TargetReplyID: t.TargetReplyID,
 				Content:       t.Content,
-			}
-			if err := tx.Create(&target).Error; err != nil {
+			}); err != nil {
 				return err
 			}
 		}
 
-		// Update topic status_update_time
-		tx.Model(&topicModel.Topic{}).Where("id = ?", req.TopicID).
-			Updates(map[string]any{"status_update_time": time.Now()})
+		if err := s.topicRepo.TouchStatusUpdateTime(tx, req.TopicID, time.Now()); err != nil {
+			return err
+		}
 
-		// Batch moemoepoint for target users
-		targetUserMap := make(map[int]bool)
+		// Collect distinct target users (minus self)
+		targetUserSet := make(map[int]bool)
 		for _, t := range validTargets {
-			var targetReply topicModel.TopicReply
-			if tx.Select("user_id").First(&targetReply, t.TargetReplyID).Error == nil {
-				if targetReply.UserID != uid && !targetUserMap[targetReply.UserID] {
-					targetUserMap[targetReply.UserID] = true
-				}
-			}
-		}
-		if len(targetUserMap) > 0 {
-			targetUIDs := make([]int, 0, len(targetUserMap))
-			for id := range targetUserMap {
-				targetUIDs = append(targetUIDs, id)
-			}
-			tx.Model(&userModel.User{}).Where("id IN ?", targetUIDs).
-				Update("moemoepoint", gorm.Expr("moemoepoint + ?", constants.RewardReply))
-
-			// Batch create messages
-			link := fmt.Sprintf("/topic/%d", req.TopicID)
-			preview := truncate(req.Content, constants.TextPreviewLength)
-			for _, targetUID := range targetUIDs {
-				tx.Create(&msgModel.Message{
-					SenderID:   uid,
-					ReceiverID: targetUID,
-					Type:       "replied",
-					Content:    preview,
-					Link:       link,
-					Status:     "unread",
-				})
+			targetUID, err := s.replyRepo.FindTargetReplyUserID(tx, t.TargetReplyID)
+			if err == nil && targetUID != uid {
+				targetUserSet[targetUID] = true
 			}
 		}
 
-		// Reward topic owner
+		preview := truncate(req.Content, constants.TextPreviewLength)
+
+		for targetUID := range targetUserSet {
+			s.helpers.AdjustMoemoepoint(tx, targetUID, constants.RewardReply)
+			s.helpers.CreateReplyMessage(tx, uid, targetUID, "replied", preview, req.TopicID)
+		}
+
+		// Reward topic owner (matches original: always creates an extra
+		// "replied" message even if owner is already a target recipient).
 		if strings.TrimSpace(req.Content) != "" && topic.UserID != uid {
-			tx.Model(&userModel.User{}).Where("id = ?", topic.UserID).
-				Update("moemoepoint", gorm.Expr("moemoepoint + ?", constants.RewardReply))
-
-			link := fmt.Sprintf("/topic/%d", req.TopicID)
-			preview := truncate(req.Content, constants.TextPreviewLength)
-			tx.Create(&msgModel.Message{
-				SenderID:   uid,
-				ReceiverID: topic.UserID,
-				Type:       "replied",
-				Content:    preview,
-				Link:       link,
-				Status:     "unread",
-			})
+			s.helpers.AdjustMoemoepoint(tx, topic.UserID, constants.RewardReply)
+			s.helpers.CreateReplyMessage(tx, uid, topic.UserID, "replied", preview, req.TopicID)
 		}
 
 		return nil
@@ -228,7 +196,6 @@ func (s *ReplyService) CreateReply(
 		return nil, errors.ErrInternal("创建回复失败")
 	}
 
-	// Build response outside transaction
 	rows, _ := s.replyRepo.FindRepliesByIDs([]int{newReply.ID})
 	if len(rows) == 0 {
 		return nil, errors.ErrInternal("创建回复失败")
@@ -256,24 +223,30 @@ func (s *ReplyService) UpdateReply(
 
 	now := time.Now()
 	txErr := s.replyRepo.DB().Transaction(func(tx *gorm.DB) error {
-		tx.Model(&topicModel.TopicReply{}).Where("id = ?", req.ReplyID).
-			Updates(map[string]any{"content": req.Content, "edited": &now})
+		if err := s.replyRepo.UpdateReplyContent(tx, req.ReplyID, map[string]any{
+			"content": req.Content,
+			"edited":  &now,
+		}); err != nil {
+			return err
+		}
 
-		// Replace targets
 		if len(req.Targets) > 0 {
-			tx.Where("reply_id = ?", req.ReplyID).Delete(&topicModel.TopicReplyTarget{})
+			if err := s.replyRepo.DeleteReplyTargetsByReplyID(tx, req.ReplyID); err != nil {
+				return err
+			}
 			for _, t := range req.Targets {
 				if strings.TrimSpace(t.Content) == "" {
 					continue
 				}
-				tx.Create(&topicModel.TopicReplyTarget{
+				if err := s.replyRepo.CreateReplyTarget(tx, &topicModel.TopicReplyTarget{
 					ReplyID:       req.ReplyID,
 					TargetReplyID: t.TargetReplyID,
 					Content:       t.Content,
-				})
+				}); err != nil {
+					return err
+				}
 			}
 		}
-
 		return nil
 	})
 
@@ -307,17 +280,14 @@ func (s *ReplyService) DeleteReply(
 	}
 
 	txErr := s.replyRepo.DB().Transaction(func(tx *gorm.DB) error {
-		// Check balance
-		var user userModel.User
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			First(&user, reply.UserID).Error; err != nil {
+		user, err := s.replyRepo.LockUserForUpdate(tx, reply.UserID)
+		if err != nil {
 			return err
 		}
 		if user.Moemoepoint < penalty {
 			return gorm.ErrCheckConstraintViolated
 		}
 
-		// Cascade collect + delete
 		allIDs, err := s.replyRepo.CollectCascadeReplyIDs(tx, []int{replyID})
 		if err != nil {
 			return err
@@ -326,9 +296,8 @@ func (s *ReplyService) DeleteReply(
 			return err
 		}
 
-		// Deduct moemoepoint
-		return tx.Model(&userModel.User{}).Where("id = ?", reply.UserID).
-			Update("moemoepoint", gorm.Expr("moemoepoint - ?", penalty)).Error
+		s.helpers.AdjustMoemoepoint(tx, reply.UserID, -penalty)
+		return nil
 	})
 
 	if txErr == gorm.ErrCheckConstraintViolated {
@@ -346,33 +315,38 @@ func (s *ReplyService) DeleteReply(
 
 func (s *ReplyService) ToggleReplyLike(ctx context.Context, uid, replyID int) *errors.AppError {
 	err := s.replyRepo.DB().Transaction(func(tx *gorm.DB) error {
-		var reply topicModel.TopicReply
-		if err := tx.First(&reply, replyID).Error; err != nil {
+		reply, err := s.replyRepo.FindByIDTx(tx, replyID)
+		if err != nil {
 			return err
 		}
 		if reply.UserID == uid {
 			return gorm.ErrInvalidData
 		}
 
-		var existing topicModel.TopicReplyLike
-		result := tx.Where("user_id = ? AND topic_reply_id = ?", uid, replyID).First(&existing)
+		existing, findErr := s.replyRepo.FindReplyLike(tx, uid, replyID)
 
-		if result.Error == gorm.ErrRecordNotFound {
-			tx.Create(&topicModel.TopicReplyLike{UserID: uid, TopicReplyID: replyID})
-			tx.Model(&topicModel.TopicReply{}).Where("id = ?", replyID).
-				Update("like_count", gorm.Expr("like_count + 1"))
-			tx.Model(&userModel.User{}).Where("id = ?", reply.UserID).
-				Update("moemoepoint", gorm.Expr("moemoepoint + 1"))
+		if findErr == gorm.ErrRecordNotFound {
+			if err := s.replyRepo.CreateReplyLike(tx, uid, replyID); err != nil {
+				return err
+			}
+			if err := s.replyRepo.AdjustReplyLikeCount(tx, replyID, 1); err != nil {
+				return err
+			}
+			s.helpers.AdjustMoemoepoint(tx, reply.UserID, 1)
 
 			link := fmt.Sprintf("/topic/%d", reply.TopicID)
 			preview := truncate(reply.Content, constants.TextPreviewLength)
-			createDedupMessageByLink(tx, uid, reply.UserID, "liked", preview, link)
+			createDedupMessage(tx, uid, reply.UserID, "liked", preview, link)
+		} else if findErr == nil {
+			if err := s.replyRepo.DeleteReplyLike(tx, existing); err != nil {
+				return err
+			}
+			if err := s.replyRepo.AdjustReplyLikeCount(tx, replyID, -1); err != nil {
+				return err
+			}
+			s.helpers.AdjustMoemoepoint(tx, reply.UserID, -1)
 		} else {
-			tx.Delete(&existing)
-			tx.Model(&topicModel.TopicReply{}).Where("id = ?", replyID).
-				Update("like_count", gorm.Expr("like_count - 1"))
-			tx.Model(&userModel.User{}).Where("id = ?", reply.UserID).
-				Update("moemoepoint", gorm.Expr("moemoepoint - 1"))
+			return findErr
 		}
 		return nil
 	})
@@ -388,27 +362,28 @@ func (s *ReplyService) ToggleReplyLike(ctx context.Context, uid, replyID int) *e
 
 func (s *ReplyService) ToggleReplyDislike(ctx context.Context, uid, replyID int) *errors.AppError {
 	err := s.replyRepo.DB().Transaction(func(tx *gorm.DB) error {
-		var reply topicModel.TopicReply
-		if err := tx.First(&reply, replyID).Error; err != nil {
+		reply, err := s.replyRepo.FindByIDTx(tx, replyID)
+		if err != nil {
 			return err
 		}
 		if reply.UserID == uid {
 			return gorm.ErrInvalidData
 		}
 
-		var existing topicModel.TopicReplyDislike
-		result := tx.Where("user_id = ? AND topic_reply_id = ?", uid, replyID).First(&existing)
+		existing, findErr := s.replyRepo.FindReplyDislike(tx, uid, replyID)
 
-		if result.Error == gorm.ErrRecordNotFound {
-			tx.Create(&topicModel.TopicReplyDislike{UserID: uid, TopicReplyID: replyID})
-			tx.Model(&topicModel.TopicReply{}).Where("id = ?", replyID).
-				Update("dislike_count", gorm.Expr("dislike_count + 1"))
-		} else {
-			tx.Delete(&existing)
-			tx.Model(&topicModel.TopicReply{}).Where("id = ?", replyID).
-				Update("dislike_count", gorm.Expr("dislike_count - 1"))
+		if findErr == gorm.ErrRecordNotFound {
+			if err := s.replyRepo.CreateReplyDislike(tx, uid, replyID); err != nil {
+				return err
+			}
+			return s.replyRepo.AdjustReplyDislikeCount(tx, replyID, 1)
+		} else if findErr == nil {
+			if err := s.replyRepo.DeleteReplyDislike(tx, existing); err != nil {
+				return err
+			}
+			return s.replyRepo.AdjustReplyDislikeCount(tx, replyID, -1)
 		}
-		return nil
+		return findErr
 	})
 
 	if err == gorm.ErrInvalidData {
@@ -440,140 +415,4 @@ func (s *ReplyService) PinReply(ctx context.Context, uid, role, topicID, replyID
 		return errors.ErrInternal("操作失败")
 	}
 	return nil
-}
-
-// ──────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────
-
-func (s *ReplyService) buildReplyResponses(
-	rows []repository.ReplyRow,
-	topic *topicModel.Topic,
-	userInfo *middleware.UserInfo,
-) []dto.TopicReplyResponse {
-	if len(rows) == 0 {
-		return nil
-	}
-
-	replyIDs := make([]int, len(rows))
-	for i, r := range rows {
-		replyIDs[i] = r.ID
-	}
-
-	targetMap, _ := s.replyRepo.FindTargetsByReplyIDs(replyIDs)
-	commentMap, _ := s.replyRepo.FindCommentsByReplyIDs(replyIDs)
-
-	var likeMap, dislikeMap map[int]bool
-	var commentLikeMap map[int]bool
-	if userInfo != nil {
-		likeMap, _ = s.replyRepo.FindReplyLikeStatus(userInfo.UID, replyIDs)
-		dislikeMap, _ = s.replyRepo.FindReplyDislikeStatus(userInfo.UID, replyIDs)
-
-		// Collect comment IDs for like status
-		var commentIDs []int
-		for _, comments := range commentMap {
-			for _, c := range comments {
-				commentIDs = append(commentIDs, c.ID)
-			}
-		}
-		commentLikeMap, _ = s.replyRepo.FindCommentLikeStatus(userInfo.UID, commentIDs)
-	}
-
-	responses := make([]dto.TopicReplyResponse, len(rows))
-	for i, r := range rows {
-		// Build targets
-		var targets []dto.ReplyTargetResponse
-		if ts, ok := targetMap[r.ID]; ok {
-			for _, t := range ts {
-				preview := truncate(t.TargetContent, 150)
-				targets = append(targets, dto.ReplyTargetResponse{
-					ID:                   t.TargetReplyID,
-					Floor:                t.TargetFloor,
-					User:                 dto.KunUser{ID: t.TargetUserID, Name: t.TargetUserName, Avatar: t.TargetUserAvatar},
-					ContentPreview:       preview,
-					ReplyContentMarkdown: t.Content,
-					ReplyContentHtml:     markdown.Render(t.Content),
-				})
-			}
-		}
-		if targets == nil {
-			targets = []dto.ReplyTargetResponse{}
-		}
-
-		// Build comments
-		var comments []dto.TopicCommentResponse
-		if cs, ok := commentMap[r.ID]; ok {
-			for _, c := range cs {
-				isLiked := false
-				if commentLikeMap != nil {
-					isLiked = commentLikeMap[c.ID]
-				}
-				comments = append(comments, dto.TopicCommentResponse{
-					ID:         c.ID,
-					ReplyID:    c.TopicReplyID,
-					TopicID:    c.TopicID,
-					User:       dto.KunUser{ID: c.UserID, Name: c.UserName, Avatar: c.UserAvatar},
-					TargetUser: dto.KunUser{ID: c.TargetUserID, Name: c.TargetUserName, Avatar: c.TargetAvatar},
-					Content:    c.Content,
-					IsLiked:    isLiked,
-					LikeCount:  c.LikeCount,
-				})
-			}
-		}
-		if comments == nil {
-			comments = []dto.TopicCommentResponse{}
-		}
-
-		isPinned := topic != nil && topic.PinnedReplyID != nil && *topic.PinnedReplyID == r.ID
-		isBestAnswer := topic != nil && topic.BestAnswerID != nil && *topic.BestAnswerID == r.ID
-
-		responses[i] = dto.TopicReplyResponse{
-			ID:      r.ID,
-			TopicID: r.TopicID,
-			Floor:   r.Floor,
-			User: dto.KunUserWithMoemoepoint{
-				ID: r.UserID, Name: r.UserName,
-				Avatar: r.UserAvatar, Moemoepoint: r.UserMoemoepoint,
-			},
-			Edited:          r.Edited,
-			ContentMarkdown: r.Content,
-			ContentHtml:     markdown.Render(r.Content),
-			LikeCount:       r.LikeCount,
-			IsLiked:         likeMap[r.ID],
-			DislikeCount:    r.DislikeCount,
-			IsDisliked:      dislikeMap[r.ID],
-			Comments:        comments,
-			Targets:         targets,
-			IsPinned:        isPinned,
-			IsBestAnswer:    isBestAnswer,
-			Created:         r.CreatedAt,
-		}
-	}
-	return responses
-}
-
-func createDedupMessageByLink(tx *gorm.DB, senderID, receiverID int, msgType, content, link string) {
-	if senderID == receiverID {
-		return
-	}
-	var count int64
-	tx.Model(&msgModel.Message{}).
-		Where("sender_id = ? AND receiver_id = ? AND type = ? AND link = ?",
-			senderID, receiverID, msgType, link).
-		Count(&count)
-	if count > 0 {
-		return
-	}
-	tx.Create(&msgModel.Message{
-		SenderID: senderID, ReceiverID: receiverID,
-		Type: msgType, Content: content, Link: link, Status: "unread",
-	})
-}
-
-func truncate(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen])
 }
