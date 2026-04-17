@@ -1,4 +1,5 @@
 export const markdownToText = (markdown: string) => {
+  if (!markdown) return ''
   return markdown
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')

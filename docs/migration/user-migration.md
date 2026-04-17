@@ -163,15 +163,27 @@ For each source database (kungal, then moyu):
      FROM _id_map WHERE "user".id = _id_map.old_id + 100000000;
    ```
 
-6. **Reset sequence** — update `user_id_seq` to current max ID
+6. **Remap `chat_room.name`** — Kungal's private chat rooms use `name` format `"uid1-uid2"` (sorted). After user IDs change, these names must be recalculated:
+   ```sql
+   UPDATE chat_room SET name =
+     LEAST(m1.new_id, m2.new_id) || '-' || GREATEST(m1.new_id, m2.new_id)
+   FROM _id_map m1, _id_map m2
+   WHERE SPLIT_PART(name, '-', 1)::int = m1.old_id + 100000000
+     AND SPLIT_PART(name, '-', 2)::int = m2.old_id + 100000000
+     AND type = 'private';
+   ```
+   This runs after Pass 2's user.id update, using the offset values from Pass 1. Only `type = 'private'` rooms are affected (group rooms don't use this naming convention).
 
-7. **Re-enable triggers** on all affected tables
+7. **Reset sequence** — update `user_id_seq` to current max ID
+
+8. **Re-enable triggers** on all affected tables
 
 The entire remap runs in a single transaction per source database. If anything fails, all changes are rolled back.
 
 **Tables remapped in Kungal** (51 FK columns across ~30 tables):
 
 ```
+chat_room.last_message_sender_id,
 chat_room_participant.user_id, chat_room_admin.user_id,
 chat_message.sender_id, chat_message.receiver_id,
 chat_message_read_by.user_id, chat_message_reaction.user_id,
@@ -179,7 +191,9 @@ doc_article.author_id,
 galgame.user_id, galgame_rating.user_id, galgame_rating_like.user_id,
 galgame_rating_comment.user_id, galgame_rating_comment.target_user_id,
 galgame_comment.user_id, galgame_comment.target_user_id,
-galgame_comment_like.user_id, galgame_history.user_id,
+galgame_comment_like.user_id, galgame_contributor.user_id,
+galgame_like.user_id, galgame_favorite.user_id,
+galgame_history.user_id,
 galgame_link.user_id, galgame_pr.user_id,
 galgame_resource.user_id, galgame_resource_like.user_id,
 galgame_toolset.user_id, galgame_toolset_contributor.user_id,

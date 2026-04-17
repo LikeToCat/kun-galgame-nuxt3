@@ -91,7 +91,10 @@ func (h *SectionHandler) GetSectionTopics(c *fiber.Ctx) error {
 		}
 	}
 
-	return response.Paginated(c, items, total)
+	return response.OK(c, fiber.Map{
+		"topics": items,
+		"total":  total,
+	})
 }
 
 // GetCategories returns topic category stats.

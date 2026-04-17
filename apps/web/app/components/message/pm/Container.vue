@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import { replaceAsideItem } from '../aside/asideItemStore'
-import type { KunContextMenuItem } from '~/components/kun/context-menu/type'
 
 const props = defineProps<{
   userId: number
 }>()
 
-const socket = useSocketIO()
-useSocketIOErrorHandler()
-
 const historyContainer = ref<HTMLDivElement | null>(null)
 const messageInput = ref('')
 const messages = ref<ChatMessage[]>([])
 const isLoadHistoryMessageComplete = ref(false)
+const isSending = ref(false)
 const isShowLoader = computed(() => {
   if (isLoadHistoryMessageComplete.value) {
     return false
@@ -28,37 +25,6 @@ const pageData = reactive({
   page: 1,
   limit: 30
 })
-const contextMenuState = reactive({
-  visible: false,
-  x: 0,
-  y: 0,
-  message: null as ChatMessage | null
-})
-const contextMenuItems = computed<KunContextMenuItem[]>(() => {
-  if (!contextMenuState.message || contextMenuState.message.isRecall) {
-    return []
-  }
-  return [
-    {
-      key: 'recall',
-      label: '撤回消息',
-      icon: 'lucide:rotate-ccw',
-      color: 'danger'
-    }
-  ]
-})
-
-const upsertChatMessage = (incoming: ChatMessage) => {
-  const targetIndex = messages.value.findIndex(
-    (message) => message.id === incoming.id
-  )
-
-  if (targetIndex !== -1) {
-    messages.value[targetIndex] = incoming
-  } else {
-    messages.value.push(incoming)
-  }
-}
 
 const scrollToBottom = () => {
   if (historyContainer.value) {
@@ -69,36 +35,19 @@ const scrollToBottom = () => {
   }
 }
 
-const handleMessageSent = (newMessage: ChatMessage) => {
-  upsertChatMessage(newMessage)
-  replaceAsideItem(newMessage)
-  messageInput.value = ''
-  nextTick(() => scrollToBottom())
+const getMessageHistory = async () => {
+  const histories = await kunFetch<ChatMessage[]>('/message/chat/history', {
+    method: 'GET',
+    query: {
+      receiverUid: uid,
+      page: pageData.page,
+      limit: pageData.limit
+    }
+  })
+  return Array.isArray(histories) ? histories : ([] as ChatMessage[])
 }
 
-const handleMessageReceived = (msg: ChatMessage) => {
-  if (msg.receiverUid === currentUserUid && msg.sender.id === uid) {
-    upsertChatMessage(msg)
-    replaceAsideItem(msg)
-    nextTick(() => {
-      scrollToBottom()
-    })
-  }
-}
-
-const handleMessageRecalled = (msg: ChatMessage) => {
-  upsertChatMessage(msg)
-  replaceAsideItem(msg)
-  if (msg.sender.id === currentUserUid) {
-    useMessage('撤回消息成功', 'success')
-  }
-}
-
-const handleMessageRecallError = (errMsg: string) => {
-  useMessage(errMsg, 'error')
-}
-
-const sendMessage = () => {
+const sendMessage = async () => {
   if (!messageInput.value.trim()) {
     useMessage(10401, 'warn')
     return
@@ -107,16 +56,21 @@ const sendMessage = () => {
     useMessage(10402, 'warn')
     return
   }
-  socket.emit('message:sending', uid, messageInput.value)
-}
 
-const getMessageHistory = async () => {
-  const histories = await kunFetch<ChatMessage[]>('/message/chat/history', {
-    method: 'GET',
-    query: { receiverUid: uid, ...pageData }
+  isSending.value = true
+  const result = await kunFetch('/message/chat/send', {
+    method: 'POST',
+    body: { receiverUid: uid, content: messageInput.value }
   })
-  const results = Array.isArray(histories) ? histories : [] as ChatMessage[]
-  return results
+  isSending.value = false
+
+  if (result) {
+    messageInput.value = ''
+    // Reload latest messages to get the new one
+    pageData.page = 1
+    messages.value = await getMessageHistory()
+    nextTick(() => scrollToBottom())
+  }
 }
 
 const handleLoadHistoryMessages = async () => {
@@ -146,54 +100,6 @@ const handleLoadHistoryMessages = async () => {
   }
 }
 
-const handleRecallMessage = async (message: ChatMessage) => {
-  if (!message || message.isRecall) {
-    return
-  }
-
-  const ok = await useComponentMessageStore().alert('确定撤回该消息吗？')
-  if (!ok) {
-    return
-  }
-
-  socket.emit('message:recall', message.id)
-}
-
-const closeContextMenu = () => {
-  contextMenuState.visible = false
-  contextMenuState.message = null
-}
-
-const handleMessageContextMenu = ({
-  event,
-  message
-}: {
-  event: MouseEvent
-  message: ChatMessage
-}) => {
-  event.preventDefault()
-  event.stopPropagation()
-  closeContextMenu()
-  contextMenuState.message = message
-  contextMenuState.x = event.clientX
-  contextMenuState.y = event.clientY
-  contextMenuState.visible = true
-}
-
-const handleContextMenuSelect = async (item: KunContextMenuItem) => {
-  if (!contextMenuState.message) {
-    return
-  }
-  if (item.key === 'recall') {
-    await handleRecallMessage(contextMenuState.message)
-  }
-}
-
-watch(
-  () => messages.value,
-  () => scrollToBottom()
-)
-
 const onKeydown = async (event: KeyboardEvent) => {
   if (event.key === 'Enter') {
     event.preventDefault()
@@ -202,13 +108,6 @@ const onKeydown = async (event: KeyboardEvent) => {
 }
 
 onMounted(async () => {
-  socket.emit('private:join', uid)
-
-  socket.on('message:sent', handleMessageSent)
-  socket.on('message:received', handleMessageReceived)
-  socket.on('message:recalled', handleMessageRecalled)
-  socket.on('message:recall:error', handleMessageRecallError)
-
   messages.value = await getMessageHistory()
   window.addEventListener('keydown', onKeydown)
 
@@ -219,11 +118,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
-  socket.emit('private:leave')
-  socket.off('message:sent', handleMessageSent)
-  socket.off('message:received', handleMessageReceived)
-  socket.off('message:recalled', handleMessageRecalled)
-  socket.off('message:recall:error', handleMessageRecallError)
 })
 </script>
 
@@ -234,46 +128,34 @@ onBeforeUnmount(() => {
   >
     <div class="flex justify-center">
       <KunButton
-        variant="light"
         v-if="isShowLoader"
         @click="handleLoadHistoryMessages"
+        size="sm"
+        variant="light"
       >
-        加载历史消息
+        加载更多
       </KunButton>
     </div>
 
-    <KunNull v-if="!isShowLoader && messages.length > 30" />
+    <MessagePmMessage
+      v-for="message in messages"
+      :key="message.id"
+      :message="message"
+      :current-user-uid="currentUserUid"
+    />
 
-    <div class="space-y-2" v-if="messages.length">
-      <MessagePmItem
-        v-for="message in messages"
-        :key="message.id"
-        :message="message"
-        :is-sent="uid !== message.sender.id"
-        @context-menu="handleMessageContextMenu"
-      />
+    <div v-if="!messages.length" class="text-default-500 py-10 text-center">
+      暂无消息，发送一条消息开始聊天吧
     </div>
-
-    <KunNull v-if="!messages.length" />
   </div>
 
-  <div class="flex justify-between gap-2">
-    <KunInput size="lg" v-model="messageInput" />
-    <KunButton
-      size="xl"
-      :is-icon-only="true"
-      class-name="shrink-0"
-      @click="sendMessage"
-    >
-      <KunIcon name="lucide:send" />
-    </KunButton>
+  <div class="flex gap-2 border-t px-3 pt-3">
+    <KunInput
+      v-model="messageInput"
+      placeholder="输入消息..."
+      class="flex-1"
+      @keydown.enter.prevent="sendMessage"
+    />
+    <KunButton @click="sendMessage" :loading="isSending"> 发送 </KunButton>
   </div>
-
-  <KunContextMenu
-    :visible="contextMenuState.visible && !!contextMenuState.message"
-    :position="{ x: contextMenuState.x, y: contextMenuState.y }"
-    :items="contextMenuItems"
-    @close="closeContextMenu"
-    @select="handleContextMenuSelect"
-  />
 </template>

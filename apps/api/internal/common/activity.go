@@ -107,13 +107,7 @@ var sources = map[string]activitySource{
 			'/galgame/' || t.galgame_rating_id AS link, t.created, t.user_id
 			FROM galgame_rating_comment t`,
 	},
-	"GALGAME_PR_CREATION": {
-		typeStr: "GALGAME_PR_CREATION",
-		query: `SELECT 'GALGAME_PR_CREATION' AS type_str, t.id,
-			COALESCE(NULLIF(t.note,''), 'PR') AS content,
-			'/galgame/' || t.galgame_id AS link, t.created, t.user_id
-			FROM galgame_pr t`,
-	},
+	// GALGAME_PR_CREATION removed: galgame_pr table moved to wiki service
 	"GALGAME_WEBSITE_CREATION": {
 		typeStr: "GALGAME_WEBSITE_CREATION",
 		query: `SELECT 'GALGAME_WEBSITE_CREATION' AS type_str, t.id,

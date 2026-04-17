@@ -3,12 +3,22 @@ import { asideItems } from './asideItemStore'
 
 const routeName = computed(() => useRoute().name)
 
-const [{ data: system }, { data: contact }] = await Promise.all([
-  useKunFetch<MessageNavSystem[]>('/message/nav/system'),
-  useKunFetch<MessageNavContact[]>('/message/nav/contact')
-])
+const { data: system } = useKunFetch<ChatMessageAsideItem[]>(
+  '/message/nav/system',
+  { server: false, lazy: true }
+)
+const { data: contact } = useKunFetch<ChatMessageAsideItem[]>(
+  '/message/nav/contact',
+  { server: false, lazy: true }
+)
 
-asideItems.value = contact.value ? contact.value : []
+watch(
+  contact,
+  (val) => {
+    asideItems.value = val ?? []
+  },
+  { immediate: true }
+)
 </script>
 
 <template>

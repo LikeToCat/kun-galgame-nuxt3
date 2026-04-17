@@ -102,7 +102,7 @@ func New(cfg *config.Config) *App {
 		TopicHandler:   topicHandler.NewTopicHandler(topicSvc),
 		ReplyHandler:   topicHandler.NewReplyHandler(replySvc, commentSvc),
 		PollHandler:    topicHandler.NewPollHandler(pollSvc),
-		MessageHandler: msgHandler.NewMessageHandler(messageSvc),
+		MessageHandler: msgHandler.NewMessageHandler(db, messageSvc),
 		AdminHandler:   adminHandler.NewAdminHandler(db, rdb),
 		RankingHandler: common.NewRankingHandler(db, gc),
 		SectionHandler: common.NewSectionHandler(db),

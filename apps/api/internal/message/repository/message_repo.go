@@ -122,7 +122,7 @@ func (r *MessageRepository) GetNavSummary(uid int) ([]map[string]any, error) {
 	r.db.Model(&model.Message{}).Where("receiver_id = ? AND status = 'unread'", uid).Count(&noticeUnread)
 
 	var latestNotice model.Message
-	r.db.Where("receiver_id = ?", uid).Order("created DESC").First(&latestNotice)
+	noticeResult := r.db.Where("receiver_id = ?", uid).Order("created DESC").First(&latestNotice)
 
 	// System messages
 	var sysTotal, sysUnread int64
@@ -130,22 +130,46 @@ func (r *MessageRepository) GetNavSummary(uid int) ([]map[string]any, error) {
 	r.db.Model(&model.SystemMessage{}).Where("status = 'unread'").Count(&sysUnread)
 
 	var latestSys model.SystemMessage
-	r.db.Order("created DESC").First(&latestSys)
+	sysResult := r.db.Order("created DESC").First(&latestSys)
+
+	noticeContent := ""
+	if latestNotice.Content != "" {
+		if len(latestNotice.Content) > 100 {
+			noticeContent = latestNotice.Content[:100]
+		} else {
+			noticeContent = latestNotice.Content
+		}
+	}
+
+	var noticeTime any = ""
+	if noticeResult.RowsAffected > 0 {
+		noticeTime = latestNotice.CreatedAt
+	}
+	var sysTime any = ""
+	if sysResult.RowsAffected > 0 {
+		sysTime = latestSys.CreatedAt
+	}
 
 	result := []map[string]any{
 		{
-			"type":          "notice",
-			"totalCount":    noticeTotal,
-			"unreadCount":   noticeUnread,
-			"latestContent": latestNotice.Content,
-			"latestTime":    latestNotice.CreatedAt,
+			"chatroomName":    "",
+			"content":         noticeContent,
+			"lastMessageTime": noticeTime,
+			"count":           noticeTotal,
+			"unreadCount":     noticeUnread,
+			"route":           "notice",
+			"title":           "zako~",
+			"avatar":          "",
 		},
 		{
-			"type":          "system",
-			"totalCount":    sysTotal,
-			"unreadCount":   sysUnread,
-			"latestContent": latestSys.ContentZhCN,
-			"latestTime":    latestSys.CreatedAt,
+			"chatroomName":    "",
+			"content":         "",
+			"lastMessageTime": sysTime,
+			"count":           sysTotal,
+			"unreadCount":     sysUnread,
+			"route":           "system",
+			"title":           "zako~",
+			"avatar":          "",
 		},
 	}
 	return result, nil
