@@ -85,6 +85,28 @@ func (c *GalgameClient) mutateWithToken(ctx context.Context, method, path, token
 	return c.doRequest(req)
 }
 
+// WikiUserStats is the user galgame stats from wiki service.
+type WikiUserStats struct {
+	GalgameCreated      int64 `json:"galgame_created"`
+	GalgameCreatedToday int64 `json:"galgame_created_today"`
+	GalgameContributed  int64 `json:"galgame_contributed"`
+}
+
+// GetUserStats fetches galgame-related stats for a user from wiki.
+func (c *GalgameClient) GetUserStats(ctx context.Context, uid int) (*WikiUserStats, error) {
+	path := fmt.Sprintf("/galgame/user/%d/stats", uid)
+	data, appErr := c.Get(ctx, path, nil)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var stats WikiUserStats
+	if err := json.Unmarshal(data, &stats); err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}
+
 // GalgameBrief is the lightweight metadata returned by /galgame/batch.
 type GalgameBrief struct {
 	ID                 int    `json:"id"`

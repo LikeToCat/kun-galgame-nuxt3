@@ -39,6 +39,13 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
+	// Enrich with wiki galgame stats (non-blocking — zero values on failure)
+	if wikiStats, err := h.wikiGC.GetUserStats(c.Context(), uid); err == nil && wikiStats != nil {
+		profile.Galgame = wikiStats.GalgameCreated
+		profile.DailyGalgameCount = wikiStats.GalgameCreatedToday
+		profile.ContributeGalgame = wikiStats.GalgameContributed
+	}
+
 	return response.OK(c, profile)
 }
 

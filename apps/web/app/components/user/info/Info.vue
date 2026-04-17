@@ -13,6 +13,8 @@ const statsBlocks = [
   { key: 'topicPoll', label: '话题投票' },
   { key: 'replyCreated', label: '回复' },
   { key: 'commentCreated', label: '评论' },
+  { key: 'galgame', label: 'Galgame' },
+  { key: 'contributeGalgame', label: 'Galgame 贡献' },
   { key: 'galgameComment', label: 'Galgame 评论' },
   { key: 'galgameRating', label: 'Galgame 评分' },
   { key: 'galgameResource', label: 'Galgame 资源' },
@@ -44,6 +46,7 @@ const interactionBlocks = [
 const infoList = [
   { label: '注册序号', value: (u: UserInfo) => u.id },
   { label: '今日发布话题', value: (u: UserInfo) => u.dailyTopicCount },
+  { label: '今日发布 Galgame', value: (u: UserInfo) => u.dailyGalgameCount },
   {
     label: '注册时间',
     value: (u: UserInfo) =>

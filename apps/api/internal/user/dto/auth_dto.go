@@ -41,15 +41,16 @@ type UserProfileDetail struct {
 	CreatedAt   time.Time `json:"created"`
 
 	// Created counts
-	Topic                 int64 `json:"topic"`
-	TopicPoll             int64 `json:"topicPoll"`
-	ReplyCreated          int64 `json:"replyCreated"`
-	CommentCreated        int64 `json:"commentCreated"`
-	Galgame               int64 `json:"galgame"`
-	GalgameComment        int64 `json:"galgameComment"`
-	GalgameRating         int64 `json:"galgameRating"`
-	GalgameResource       int64 `json:"galgameResource"`
-	GalgameToolset        int64 `json:"galgameToolset"`
+	Topic                  int64 `json:"topic"`
+	TopicPoll              int64 `json:"topicPoll"`
+	ReplyCreated           int64 `json:"replyCreated"`
+	CommentCreated         int64 `json:"commentCreated"`
+	Galgame                int64 `json:"galgame"`
+	ContributeGalgame      int64 `json:"contributeGalgame"`
+	GalgameComment         int64 `json:"galgameComment"`
+	GalgameRating          int64 `json:"galgameRating"`
+	GalgameResource        int64 `json:"galgameResource"`
+	GalgameToolset         int64 `json:"galgameToolset"`
 	GalgameToolsetResource int64 `json:"galgameToolsetResource"`
 
 	// Received interaction counts
