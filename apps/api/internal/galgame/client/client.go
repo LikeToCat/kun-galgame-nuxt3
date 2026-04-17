@@ -107,6 +107,27 @@ func (c *GalgameClient) GetUserStats(ctx context.Context, uid int) (*WikiUserSta
 	return &stats, nil
 }
 
+// WikiAdminStats is the admin stats response from wiki service.
+type WikiAdminStats struct {
+	Totals map[string]int64   `json:"totals"`
+	Daily  []map[string]any   `json:"daily"`
+}
+
+// GetAdminStats fetches wiki-side admin stats for the last N days.
+func (c *GalgameClient) GetAdminStats(ctx context.Context, days int) (*WikiAdminStats, error) {
+	query := url.Values{"days": {fmt.Sprintf("%d", days)}}
+	data, appErr := c.Get(ctx, "/admin/stats", query)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var stats WikiAdminStats
+	if err := json.Unmarshal(data, &stats); err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}
+
 // GalgameBrief is the lightweight metadata returned by /galgame/batch.
 type GalgameBrief struct {
 	ID                 int    `json:"id"`

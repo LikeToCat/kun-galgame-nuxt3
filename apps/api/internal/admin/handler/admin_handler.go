@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	galgameClient "kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/internal/middleware"
 	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
@@ -18,12 +19,13 @@ import (
 const redisDisableRegisterKey = "kun:disable_register"
 
 type AdminHandler struct {
-	db  *gorm.DB
-	rdb *redis.Client
+	db     *gorm.DB
+	rdb    *redis.Client
+	wikiGC *galgameClient.GalgameClient
 }
 
-func NewAdminHandler(db *gorm.DB, rdb *redis.Client) *AdminHandler {
-	return &AdminHandler{db: db, rdb: rdb}
+func NewAdminHandler(db *gorm.DB, rdb *redis.Client, gc *galgameClient.GalgameClient) *AdminHandler {
+	return &AdminHandler{db: db, rdb: rdb, wikiGC: gc}
 }
 
 // ──────────────────────────────────────────
@@ -39,22 +41,44 @@ type overviewItem struct {
 // GetOverview returns counts for all major models.
 // GET /api/admin/overview/all
 func (h *AdminHandler) GetOverview(c *fiber.Ctx) error {
-	models := []struct{ name, table string }{
-		{"user", `"user"`},
-		{"topic", "topic"},
-		{"topic_reply", "topic_reply"},
-		{"topic_comment", "topic_comment"},
-		{"galgame", "galgame"},
-		{"galgame_resource", "galgame_resource"},
-		{"galgame_comment", "galgame_comment"},
-		{"message", "message"},
+	models := []struct{ name, table, label string }{
+		{"user", `"user"`, "用户"},
+		{"topic", "topic", "话题"},
+		{"topic_reply", "topic_reply", "话题回复"},
+		{"topic_comment", "topic_comment", "话题评论"},
+		{"galgame", "galgame", "Galgame"},
+		{"galgame_resource", "galgame_resource", "Galgame 资源"},
+		{"galgame_comment", "galgame_comment", "Galgame 评论"},
+		{"galgame_website", "galgame_website", "Galgame 网站"},
+		{"galgame_website_comment", "galgame_website_comment", "Galgame 网站评论"},
+		{"chat_message", "chat_message", "聊天消息"},
 	}
 
-	items := make([]overviewItem, len(models))
-	for i, m := range models {
+	items := make([]overviewItem, 0, len(models)+7)
+	for _, m := range models {
 		var count int64
 		h.db.Table(m.table).Count(&count)
-		items[i] = overviewItem{Name: m.name, Label: m.name, Count: count}
+		items = append(items, overviewItem{Name: m.name, Label: m.label, Count: count})
+	}
+
+	// Merge wiki totals (non-blocking)
+	wikiModels := []struct{ key, label string }{
+		{"galgame_tag", "Galgame 标签"},
+		{"galgame_official", "Galgame 会社"},
+		{"galgame_engine", "Galgame 引擎"},
+		{"galgame_series", "Galgame 系列"},
+		{"galgame_link", "Galgame 链接"},
+		{"galgame_pr", "Galgame PR"},
+		{"galgame_revision", "Galgame 编辑历史"},
+	}
+	if wikiStats, err := h.wikiGC.GetAdminStats(c.Context(), 1); err == nil && wikiStats != nil {
+		for _, m := range wikiModels {
+			items = append(items, overviewItem{Name: m.key, Label: m.label, Count: wikiStats.Totals[m.key]})
+		}
+	} else {
+		for _, m := range wikiModels {
+			items = append(items, overviewItem{Name: m.key, Label: m.label, Count: 0})
+		}
 	}
 
 	return response.OK(c, items)
@@ -75,27 +99,96 @@ func (h *AdminHandler) GetStats(c *fiber.Ctx) error {
 
 	since := time.Now().AddDate(0, 0, -req.Days)
 
-	tables := []string{"user", "topic", "galgame"}
-	type dailyStat struct {
-		Date  string `json:"date"`
-		Count int64  `json:"count"`
+	// All tables the frontend expects
+	tables := []struct{ key, table string }{
+		{"user", `"user"`},
+		{"topic", "topic"},
+		{"topic_reply", "topic_reply"},
+		{"topic_comment", "topic_comment"},
+		{"galgame", "galgame"},
+		{"galgame_resource", "galgame_resource"},
+		{"galgame_comment", "galgame_comment"},
+		{"galgame_website", "galgame_website"},
+		{"galgame_website_comment", "galgame_website_comment"},
+		{"chat_message", "chat_message"},
 	}
 
-	result := make(map[string][]dailyStat)
-	for _, table := range tables {
+	type dailyStat struct {
+		Date  string `gorm:"column:date"`
+		Count int64  `gorm:"column:count"`
+	}
+
+	// Collect per-table daily counts, indexed by date
+	dateMap := make(map[string]map[string]int64) // date -> table -> count
+	for _, t := range tables {
 		var stats []dailyStat
-		quotedTable := table
-		if table == "user" {
-			quotedTable = `"user"`
-		}
 		h.db.Raw(fmt.Sprintf(`
 			SELECT date_trunc('day', created)::date::text AS date, COUNT(*) AS count
 			FROM %s WHERE created >= ? GROUP BY 1 ORDER BY 1
-		`, quotedTable), since).Scan(&stats)
-		result[table] = stats
+		`, t.table), since).Scan(&stats)
+		for _, s := range stats {
+			if dateMap[s.Date] == nil {
+				dateMap[s.Date] = make(map[string]int64)
+			}
+			dateMap[s.Date][t.key] = s.Count
+		}
+	}
+
+	// Merge wiki daily stats (non-blocking)
+	wikiKeys := []string{"galgame_tag", "galgame_official", "galgame_engine", "galgame_series", "galgame_link", "galgame_pr", "galgame_revision"}
+	if wikiStats, err := h.wikiGC.GetAdminStats(c.Context(), req.Days); err == nil && wikiStats != nil {
+		for _, day := range wikiStats.Daily {
+			date, _ := day["date"].(string)
+			if date == "" {
+				continue
+			}
+			if dateMap[date] == nil {
+				dateMap[date] = make(map[string]int64)
+			}
+			for _, key := range wikiKeys {
+				if v, ok := day[key]; ok {
+					switch n := v.(type) {
+					case float64:
+						dateMap[date][key] = int64(n)
+					case int64:
+						dateMap[date][key] = n
+					}
+				}
+			}
+		}
+	}
+
+	// Build sorted flat array: [{date, user, topic, ...}, ...]
+	allKeys := make([]string, 0, len(tables)+len(wikiKeys))
+	for _, t := range tables {
+		allKeys = append(allKeys, t.key)
+	}
+	allKeys = append(allKeys, wikiKeys...)
+
+	dates := make([]string, 0, len(dateMap))
+	for d := range dateMap {
+		dates = append(dates, d)
+	}
+	sortStrings(dates)
+
+	result := make([]fiber.Map, len(dates))
+	for i, d := range dates {
+		row := fiber.Map{"date": d}
+		for _, key := range allKeys {
+			row[key] = dateMap[d][key]
+		}
+		result[i] = row
 	}
 
 	return response.OK(c, result)
+}
+
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j] < s[j-1]; j-- {
+			s[j], s[j-1] = s[j-1], s[j]
+		}
+	}
 }
 
 // ──────────────────────────────────────────

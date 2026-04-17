@@ -2,8 +2,15 @@
 import { watchDebounced } from '@vueuse/core'
 import {
   type StatsModelType,
+  KUN_ADMIN_OVERVIEW_STATS_MODEL_ITEM,
   KUN_ADMIN_OVERVIEW_STATS_MODEL_MAP
 } from '~/constants/admin'
+
+interface AdminOverviewAll {
+  name: string
+  label: string
+  count: number
+}
 
 interface StatDay {
   date: string
@@ -31,18 +38,9 @@ const [{ data: allStats }, { data }] = await Promise.all([
 const totalStats = computed(() => {
   if (!data.value) return []
 
-  const totals: Record<StatsModelType, number> = {
-    chat_message: 0,
-    galgame_comment: 0,
-    galgame_resource: 0,
-    galgame_website: 0,
-    galgame_website_comment: 0,
-    galgame: 0,
-    topic_comment: 0,
-    topic_reply: 0,
-    topic: 0,
-    user: 0
-  }
+  const totals = Object.fromEntries(
+    KUN_ADMIN_OVERVIEW_STATS_MODEL_ITEM.map((key) => [key, 0])
+  ) as Record<StatsModelType, number>
 
   for (const day of data.value) {
     for (const modelKey in totals) {
