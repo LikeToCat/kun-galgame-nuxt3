@@ -133,6 +133,8 @@ func (a *App) setupRoutes() {
 	// ════════════════════════════════════════════
 
 	optAuth := api.Group("", middleware.OptionalAuth(a.Redis, a.Config.OAuth))
+	optAuth.Get("/galgame-resource/:id/detail", a.GalgameHandler.GetResourceDownloadDetail)
+	optAuth.Get("/galgame-resource/:id", a.GalgameHandler.GetResourceDetail)
 
 	// Topic (optional auth for interaction status)
 	optAuth.Get("/topic", a.TopicHandler.GetList)

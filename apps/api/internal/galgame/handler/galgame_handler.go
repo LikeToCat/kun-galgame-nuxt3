@@ -1374,6 +1374,285 @@ func (h *GalgameHandler) GetResourceList(c *fiber.Ctx) error {
 	})
 }
 
+// GetResourceDetail returns a single resource with galgame info and recommendations.
+// GET /api/galgame-resource/:id
+func (h *GalgameHandler) GetResourceDetail(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return response.Error(c, errors.ErrBadRequest("无效的资源 ID"))
+	}
+
+	type resourceRow struct {
+		ID        int     `gorm:"column:id"`
+		View      int     `gorm:"column:view"`
+		GalgameID int     `gorm:"column:galgame_id"`
+		UserID    int     `gorm:"column:user_id"`
+		Type      string  `gorm:"column:type"`
+		Language  string  `gorm:"column:language"`
+		Platform  string  `gorm:"column:platform"`
+		Size      string  `gorm:"column:size"`
+		Status    int     `gorm:"column:status"`
+		Download  int     `gorm:"column:download"`
+		LikeCount int     `gorm:"column:like_count"`
+		Code      string  `gorm:"column:code"`
+		Password  string  `gorm:"column:password"`
+		Note      string  `gorm:"column:note"`
+		Created   string  `gorm:"column:created"`
+		Edited    *string `gorm:"column:edited"`
+	}
+	var res resourceRow
+	if err := h.db.Table("galgame_resource").Where("id = ?", id).Scan(&res).Error; err != nil || res.ID == 0 {
+		return response.OK(c, "not found")
+	}
+
+	// Increment view
+	h.db.Exec("UPDATE galgame_resource SET view = view + 1 WHERE id = ?", id)
+
+	// Resource links
+	type linkRow struct {
+		URL string `gorm:"column:url"`
+	}
+	var links []linkRow
+	h.db.Table("galgame_resource_link").Where("galgame_resource_id = ?", id).Scan(&links)
+	linkStrs := make([]string, len(links))
+	for i, l := range links {
+		linkStrs[i] = l.URL
+	}
+
+	// Link domain (first link's domain)
+	linkDomain := ""
+	if len(linkStrs) > 0 {
+		linkDomain = linkStrs[0]
+	}
+
+	// User
+	var user userModel.UserBrief
+	h.db.Where("id = ?", res.UserID).First(&user)
+
+	// Is liked by current user
+	isLiked := false
+	if uid, ok := c.Locals("uid").(int); ok && uid > 0 {
+		var cnt int64
+		h.db.Table("galgame_resource_like").Where("galgame_resource_id = ? AND user_id = ?", id, uid).Count(&cnt)
+		isLiked = cnt > 0
+	}
+
+	resource := fiber.Map{
+		"id":         res.ID,
+		"view":       res.View + 1,
+		"galgameId":  res.GalgameID,
+		"user":       fiber.Map{"id": user.ID, "name": user.Name, "avatar": user.Avatar},
+		"type":       res.Type,
+		"language":   res.Language,
+		"platform":   res.Platform,
+		"size":       res.Size,
+		"status":     res.Status,
+		"download":   res.Download,
+		"likeCount":  res.LikeCount,
+		"isLiked":    isLiked,
+		"linkDomain": linkDomain,
+		"link":       linkStrs,
+		"code":       res.Code,
+		"password":   res.Password,
+		"note":       res.Note,
+		"created":    res.Created,
+		"edited":     res.Edited,
+	}
+
+	// Galgame summary from wiki
+	galgameSummary := fiber.Map{
+		"id": res.GalgameID,
+		"name": fiber.Map{"en-us": "", "ja-jp": "", "zh-cn": "", "zh-tw": ""},
+		"banner": "", "contentLimit": "", "view": 0,
+		"resourceUpdateTime": "", "originalLanguage": "", "ageLimit": "",
+		"platform": []string{}, "language": []string{}, "type": []string{},
+	}
+	briefMap, _ := h.galgameClient.GetBatch(c.Context(), []int{res.GalgameID})
+	if b, ok := briefMap[res.GalgameID]; ok {
+		// Get aggregated platforms/languages/types for this galgame
+		type resAgg struct {
+			Platform string `gorm:"column:platform"`
+			Language string `gorm:"column:language"`
+			Type     string `gorm:"column:type"`
+		}
+		var aggs []resAgg
+		h.db.Table("galgame_resource").Select("DISTINCT platform, language, type").
+			Where("galgame_id = ?", res.GalgameID).Scan(&aggs)
+
+		platforms, languages, types := []string{}, []string{}, []string{}
+		for _, a := range aggs {
+			if a.Platform != "" {
+				platforms = appendUnique(platforms, a.Platform)
+			}
+			if a.Language != "" {
+				languages = appendUnique(languages, a.Language)
+			}
+			if a.Type != "" {
+				types = appendUnique(types, a.Type)
+			}
+		}
+
+		var localView int
+		h.db.Table("galgame").Select("view").Where("id = ?", res.GalgameID).Scan(&localView)
+
+		galgameSummary = fiber.Map{
+			"id": b.ID,
+			"name": fiber.Map{
+				"en-us": b.NameEnUs, "ja-jp": b.NameJaJp,
+				"zh-cn": b.NameZhCn, "zh-tw": b.NameZhTw,
+			},
+			"banner":             b.Banner,
+			"contentLimit":       b.ContentLimit,
+			"view":               localView,
+			"resourceUpdateTime": b.ResourceUpdateTime,
+			"originalLanguage":   b.OriginalLanguage,
+			"ageLimit":           b.AgeLimit,
+			"platform":           platforms,
+			"language":           languages,
+			"type":               types,
+		}
+	}
+
+	// Recommendations: other resources from the same galgame (max 6)
+	var recRows []resourceRow
+	h.db.Table("galgame_resource").
+		Where("galgame_id = ? AND id != ?", res.GalgameID, id).
+		Order("like_count DESC").Limit(6).Scan(&recRows)
+
+	// Batch load users for recommendations
+	recUserIDs := make([]int, 0, len(recRows))
+	for _, r := range recRows {
+		recUserIDs = append(recUserIDs, r.UserID)
+	}
+	var recUsers []userModel.UserBrief
+	if len(recUserIDs) > 0 {
+		h.db.Where("id IN ?", recUserIDs).Find(&recUsers)
+	}
+	recUserMap := make(map[int]userModel.UserBrief, len(recUsers))
+	for _, u := range recUsers {
+		recUserMap[u.ID] = u
+	}
+
+	gn := briefMap[res.GalgameID]
+	recommendations := make([]fiber.Map, len(recRows))
+	for i, r := range recRows {
+		u := recUserMap[r.UserID]
+		recommendations[i] = fiber.Map{
+			"id":        r.ID,
+			"view":      r.View,
+			"galgameId": r.GalgameID,
+			"user":      fiber.Map{"id": u.ID, "name": u.Name, "avatar": u.Avatar},
+			"type":      r.Type,
+			"language":  r.Language,
+			"platform":  r.Platform,
+			"size":      r.Size,
+			"status":    r.Status,
+			"download":  r.Download,
+			"likeCount": r.LikeCount,
+			"isLiked":   false,
+			"linkDomain": "",
+			"note":      r.Note,
+			"created":   r.Created,
+			"edited":    r.Edited,
+			"galgameName": fiber.Map{
+				"en-us": gn.NameEnUs, "ja-jp": gn.NameJaJp,
+				"zh-cn": gn.NameZhCn, "zh-tw": gn.NameZhTw,
+			},
+		}
+	}
+
+	return response.OK(c, fiber.Map{
+		"galgame":         galgameSummary,
+		"resource":        resource,
+		"recommendations": recommendations,
+	})
+}
+
+// GetResourceDownloadDetail returns resource detail with download links (authenticated).
+// GET /api/galgame-resource/:id/detail
+func (h *GalgameHandler) GetResourceDownloadDetail(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return response.Error(c, errors.ErrBadRequest("无效的资源 ID"))
+	}
+
+	type resourceRow struct {
+		ID        int     `gorm:"column:id"`
+		View      int     `gorm:"column:view"`
+		GalgameID int     `gorm:"column:galgame_id"`
+		UserID    int     `gorm:"column:user_id"`
+		Type      string  `gorm:"column:type"`
+		Language  string  `gorm:"column:language"`
+		Platform  string  `gorm:"column:platform"`
+		Size      string  `gorm:"column:size"`
+		Status    int     `gorm:"column:status"`
+		Download  int     `gorm:"column:download"`
+		LikeCount int     `gorm:"column:like_count"`
+		Code      string  `gorm:"column:code"`
+		Password  string  `gorm:"column:password"`
+		Note      string  `gorm:"column:note"`
+		Created   string  `gorm:"column:created"`
+		Edited    *string `gorm:"column:edited"`
+	}
+	var res resourceRow
+	if err := h.db.Table("galgame_resource").Where("id = ?", id).Scan(&res).Error; err != nil || res.ID == 0 {
+		return response.Error(c, errors.ErrNotFound("未找到该资源"))
+	}
+
+	// Increment download count
+	h.db.Exec("UPDATE galgame_resource SET download = download + 1 WHERE id = ?", id)
+
+	// Resource links
+	type linkRow struct {
+		URL string `gorm:"column:url"`
+	}
+	var links []linkRow
+	h.db.Table("galgame_resource_link").Where("galgame_resource_id = ?", id).Scan(&links)
+	linkStrs := make([]string, len(links))
+	for i, l := range links {
+		linkStrs[i] = l.URL
+	}
+
+	linkDomain := ""
+	if len(linkStrs) > 0 {
+		linkDomain = linkStrs[0]
+	}
+
+	// User
+	var user userModel.UserBrief
+	h.db.Where("id = ?", res.UserID).First(&user)
+
+	// Is liked
+	isLiked := false
+	if uid, ok := c.Locals("uid").(int); ok && uid > 0 {
+		var cnt int64
+		h.db.Table("galgame_resource_like").Where("galgame_resource_id = ? AND user_id = ?", id, uid).Count(&cnt)
+		isLiked = cnt > 0
+	}
+
+	return response.OK(c, fiber.Map{
+		"id":         res.ID,
+		"view":       res.View,
+		"galgameId":  res.GalgameID,
+		"user":       fiber.Map{"id": user.ID, "name": user.Name, "avatar": user.Avatar},
+		"type":       res.Type,
+		"language":   res.Language,
+		"platform":   res.Platform,
+		"size":       res.Size,
+		"status":     res.Status,
+		"download":   res.Download + 1,
+		"likeCount":  res.LikeCount,
+		"isLiked":    isLiked,
+		"linkDomain": linkDomain,
+		"link":       linkStrs,
+		"code":       res.Code,
+		"password":   res.Password,
+		"note":       res.Note,
+		"created":    res.Created,
+		"edited":     res.Edited,
+	})
+}
+
 // GetGalgameLinks wraps wiki /galgame/:gid/links, resolving user_id → KunUser.
 // GET /api/galgame/:gid/link/all
 func (h *GalgameHandler) GetGalgameLinks(c *fiber.Ctx) error {
