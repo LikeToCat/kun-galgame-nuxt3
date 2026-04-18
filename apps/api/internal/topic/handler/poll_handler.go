@@ -38,6 +38,26 @@ func (h *PollHandler) CreatePoll(c *fiber.Ctx) error {
 	return response.OKMessage(c, "投票创建成功")
 }
 
+// UpdatePoll patches poll scalars and applies an option diff.
+// PUT /api/topic/:tid/poll
+func (h *PollHandler) UpdatePoll(c *fiber.Ctx) error {
+	user, appErr := middleware.MustGetUser(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	var req dto.UpdatePollRequest
+	if appErr := utils.ParseAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	if appErr := h.pollService.UpdatePoll(c.Context(), user.UID, user.Role, &req); appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	return response.OKMessage(c, "投票更新成功")
+}
+
 // GetPollsByTopic returns all polls for a topic.
 // GET /api/topic/:tid/poll/topic
 func (h *PollHandler) GetPollsByTopic(c *fiber.Ctx) error {

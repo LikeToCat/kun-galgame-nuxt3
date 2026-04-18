@@ -47,3 +47,16 @@ func (r *TagRepository) DeleteByID(id int) {
 	r.db.Where("doc_tag_id = ?", id).Delete(&model.DocArticleTagRelation{})
 	r.db.Delete(&model.DocTag{}, id)
 }
+
+// Update applies the provided fields to a tag and returns the refreshed row.
+func (r *TagRepository) Update(id int, fields map[string]any) (*model.DocTag, error) {
+	if err := r.db.Model(&model.DocTag{}).Where("id = ?", id).
+		Updates(fields).Error; err != nil {
+		return nil, err
+	}
+	var tag model.DocTag
+	if err := r.db.First(&tag, id).Error; err != nil {
+		return nil, err
+	}
+	return &tag, nil
+}

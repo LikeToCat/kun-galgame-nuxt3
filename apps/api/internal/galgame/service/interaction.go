@@ -28,7 +28,19 @@ func (InteractionHelpers) AdjustMoemoepoint(tx *gorm.DB, userID int, delta int) 
 // CreateGalgameMessage creates a notification from `senderID` → `receiverID`
 // for a galgame-related action, deduplicating against any existing row with
 // the same (sender, receiver, type, link) triple. Same-user actions are a no-op.
-func (InteractionHelpers) CreateGalgameMessage(tx *gorm.DB, senderID, receiverID int, msgType string, galgameID int) {
+func (h InteractionHelpers) CreateGalgameMessage(tx *gorm.DB, senderID, receiverID int, msgType string, galgameID int) {
+	h.CreateGalgameMessageWithContent(tx, senderID, receiverID, msgType, "", galgameID)
+}
+
+// CreateGalgameMessageWithContent is the variant that records a content
+// preview (used by resource liked/expired notifications). Dedup applies on
+// (sender, receiver, type, link) — content is informational only.
+func (InteractionHelpers) CreateGalgameMessageWithContent(
+	tx *gorm.DB,
+	senderID, receiverID int,
+	msgType, content string,
+	galgameID int,
+) {
 	if senderID == receiverID || receiverID <= 0 {
 		return
 	}
@@ -45,6 +57,7 @@ func (InteractionHelpers) CreateGalgameMessage(tx *gorm.DB, senderID, receiverID
 
 	tx.Create(&msgModel.Message{
 		SenderID: senderID, ReceiverID: receiverID,
-		Type: msgType, Link: link, Status: "unread",
+		Type: msgType, Content: content, Link: link, Status: "unread",
 	})
 }
+

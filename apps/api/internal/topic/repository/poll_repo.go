@@ -180,3 +180,35 @@ func (r *PollRepository) FindUserBrief(userID int) (dto.KunUser, error) {
 		Where("id = ?", userID).Scan(&u).Error
 	return u, err
 }
+
+// UpdatePollFields patches poll scalar columns inside a tx.
+func (r *PollRepository) UpdatePollFields(tx *gorm.DB, pollID int, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	return tx.Model(&model.TopicPoll{}).Where("id = ?", pollID).Updates(fields).Error
+}
+
+// FindOptionsByIDs loads poll options by primary key.
+func (r *PollRepository) FindOptionsByIDs(ids []int) ([]model.TopicPollOption, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var opts []model.TopicPollOption
+	err := r.db.Where("id IN ?", ids).Find(&opts).Error
+	return opts, err
+}
+
+// UpdateOptionText patches the text of a single option.
+func (r *PollRepository) UpdateOptionText(tx *gorm.DB, optionID int, text string) error {
+	return tx.Model(&model.TopicPollOption{}).Where("id = ?", optionID).
+		Update("text", text).Error
+}
+
+// DeleteOptionsByIDs removes options by primary key (caller verifies no votes).
+func (r *PollRepository) DeleteOptionsByIDs(tx *gorm.DB, ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return tx.Where("id IN ?", ids).Delete(&model.TopicPollOption{}).Error
+}

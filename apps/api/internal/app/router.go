@@ -25,6 +25,7 @@ func (a *App) setupRoutes() {
 	auth := api.Group("/auth")
 	auth.Post("/oauth/callback", a.OAuthHandler.Callback)
 	auth.Post("/logout", a.OAuthHandler.Logout)
+	auth.Post("/email/code/reset", a.OAuthHandler.SendResetEmailCode)
 
 	// User (authenticated, fixed paths — registered before :uid to avoid conflicts)
 	userAuth := middleware.Auth(a.Redis, a.OAuthClient)
@@ -96,6 +97,10 @@ func (a *App) setupRoutes() {
 
 	// RSS (public)
 	api.Get("/rss/topic", a.RSSHandler.GetTopicRSS)
+	api.Get("/rss/galgame", a.RSSHandler.GetGalgameRSS)
+
+	// Unmoe (public)
+	api.Get("/unmoe", a.UnmoeHandler.GetLogs)
 
 	// Toolset resource detail (public)
 	api.Get("/toolset/:id/resource/detail", a.ToolsetResourceHandler.GetResourceDetail)
@@ -134,6 +139,7 @@ func (a *App) setupRoutes() {
 
 	optAuth := api.Group("", middleware.OptionalAuth(a.Redis, a.OAuthClient))
 	optAuth.Get("/galgame-resource/:id/detail", a.GalgameResourceHandler.GetResourceDownloadDetail)
+	optAuth.Get("/galgame-resource/:id/recommend", a.GalgameResourceHandler.GetRecommend)
 	optAuth.Get("/galgame-resource/:id", a.GalgameResourceHandler.GetResourceDetail)
 
 	// Topic (optional auth for interaction status)
@@ -195,6 +201,7 @@ func (a *App) setupRoutes() {
 
 	// Poll (authenticated)
 	authed.Post("/topic/:tid/poll", a.PollHandler.CreatePoll)
+	authed.Put("/topic/:tid/poll", a.PollHandler.UpdatePoll)
 	authed.Delete("/topic/:tid/poll", a.PollHandler.DeletePoll)
 	authed.Post("/topic/:tid/poll/vote", a.PollHandler.Vote)
 
@@ -226,6 +233,23 @@ func (a *App) setupRoutes() {
 	authed.Post("/galgame/:gid/comment", a.GalgameCommentHandler.CreateComment)
 	authed.Delete("/galgame/:gid/comment", a.GalgameCommentHandler.DeleteComment)
 	authed.Put("/galgame/:gid/comment/like", a.GalgameCommentHandler.ToggleCommentLike)
+
+	// Galgame resource (authenticated, local)
+	authed.Post("/galgame/:gid/resource", a.GalgameResourceHandler.CreateResource)
+	authed.Put("/galgame/:gid/resource", a.GalgameResourceHandler.UpdateResource)
+	authed.Delete("/galgame/:gid/resource", a.GalgameResourceHandler.DeleteResource)
+	authed.Put("/galgame/:gid/resource/like", a.GalgameResourceHandler.ToggleLike)
+	authed.Put("/galgame/:gid/resource/valid", a.GalgameResourceHandler.MarkValid)
+	authed.Put("/galgame/:gid/resource/expired", a.GalgameResourceHandler.MarkExpired)
+
+	// Galgame rating (authenticated, local)
+	authed.Post("/galgame-rating", a.GalgameRatingHandler.CreateRating)
+	authed.Put("/galgame-rating/:id", a.GalgameRatingHandler.UpdateRating)
+	authed.Delete("/galgame-rating/:id", a.GalgameRatingHandler.DeleteRating)
+	authed.Put("/galgame-rating/:id/like", a.GalgameRatingHandler.ToggleLike)
+	authed.Post("/galgame-rating/:id/comment", a.GalgameRatingHandler.CreateComment)
+	authed.Put("/galgame-rating/:id/comment", a.GalgameRatingHandler.UpdateComment)
+	authed.Delete("/galgame-rating/:id/comment", a.GalgameRatingHandler.DeleteComment)
 
 	// Galgame wiki writes (authenticated + token forwarding)
 	authed.Post("/galgame", a.GalgameHandler.Create)
@@ -287,6 +311,7 @@ func (a *App) setupRoutes() {
 	docAdmin.Put("/doc/category", a.DocCategoryHandler.UpdateCategory)
 	docAdmin.Delete("/doc/category", a.DocCategoryHandler.DeleteCategory)
 	docAdmin.Post("/doc/tag", a.DocTagHandler.CreateTag)
+	docAdmin.Put("/doc/tag", a.DocTagHandler.UpdateTag)
 	docAdmin.Delete("/doc/tag", a.DocTagHandler.DeleteTag)
 
 	// Website admin (role >= 2)
@@ -302,7 +327,9 @@ func (a *App) setupRoutes() {
 	// Update admin (role >= 2)
 	updateAdmin := authed.Group("", middleware.RequireRole(2))
 	updateAdmin.Post("/update/history", a.UpdateHandler.CreateHistory)
+	updateAdmin.Put("/update/history", a.UpdateHandler.UpdateHistory)
 	updateAdmin.Delete("/update/history", a.UpdateHandler.DeleteHistory)
 	updateAdmin.Post("/update/todo", a.UpdateHandler.CreateTodo)
+	updateAdmin.Put("/update/todo", a.UpdateHandler.UpdateTodo)
 	updateAdmin.Delete("/update/todo", a.UpdateHandler.DeleteTodo)
 }

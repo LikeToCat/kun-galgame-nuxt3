@@ -5,7 +5,12 @@ import (
 	userModel "kun-galgame-api/internal/user/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+// onConflictNothing is shared for batch inserts that should tolerate uniqueness
+// collisions (e.g. re-inserting resource links after an edit).
+var onConflictNothing = clause.OnConflict{DoNothing: true}
 
 type ResourceRepository struct {
 	db *gorm.DB
@@ -14,6 +19,9 @@ type ResourceRepository struct {
 func NewResourceRepository(db *gorm.DB) *ResourceRepository {
 	return &ResourceRepository{db: db}
 }
+
+// DB exposes the underlying connection for transaction orchestration in services.
+func (r *ResourceRepository) DB() *gorm.DB { return r.db }
 
 // ──────────────────────────────────────────
 // Reads
@@ -139,4 +147,92 @@ func (r *ResourceRepository) IncrementView(resourceID int) {
 // IncrementDownload atomically bumps the download count.
 func (r *ResourceRepository) IncrementDownload(resourceID int) {
 	r.db.Exec("UPDATE galgame_resource SET download = download + 1 WHERE id = ?", resourceID)
+}
+
+// Create inserts a new galgame_resource row within the given tx.
+func (r *ResourceRepository) Create(tx *gorm.DB, res *model.GalgameResource) error {
+	return tx.Create(res).Error
+}
+
+// ReplaceProviders overwrites the text[] provider column for a resource.
+// GORM has no native array type, so this uses raw SQL.
+func (r *ResourceRepository) ReplaceProviders(tx *gorm.DB, resourceID int, providers []string) error {
+	return tx.Exec(
+		"UPDATE galgame_resource SET provider = ? WHERE id = ?",
+		providers, resourceID,
+	).Error
+}
+
+// CreateLinks inserts resource_link rows, skipping (resource_id, url) duplicates.
+func (r *ResourceRepository) CreateLinks(tx *gorm.DB, resourceID int, urls []string) error {
+	if len(urls) == 0 {
+		return nil
+	}
+	links := make([]model.GalgameResourceLink, len(urls))
+	for i, u := range urls {
+		links[i] = model.GalgameResourceLink{GalgameResourceID: resourceID, URL: u}
+	}
+	return tx.Clauses(onConflictNothing).Create(&links).Error
+}
+
+// DeleteLinks removes all links for a resource.
+func (r *ResourceRepository) DeleteLinks(tx *gorm.DB, resourceID int) error {
+	return tx.Where("galgame_resource_id = ?", resourceID).
+		Delete(&model.GalgameResourceLink{}).Error
+}
+
+// UpdateFields patches arbitrary columns on a resource row (used for edit endpoint).
+// Keys are column names (not struct field names).
+func (r *ResourceRepository) UpdateFields(tx *gorm.DB, resourceID int, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	return tx.Table("galgame_resource").Where("id = ?", resourceID).
+		Updates(fields).Error
+}
+
+// UpdateStatus sets the status column (0 = valid, 1 = expired).
+func (r *ResourceRepository) UpdateStatus(tx *gorm.DB, resourceID, status int) error {
+	return tx.Table("galgame_resource").Where("id = ?", resourceID).
+		Update("status", status).Error
+}
+
+// DeleteByID removes a resource by primary key. Cascades to links/likes via FK.
+func (r *ResourceRepository) DeleteByID(tx *gorm.DB, resourceID int) error {
+	return tx.Where("id = ?", resourceID).Delete(&model.GalgameResource{}).Error
+}
+
+// FindLike returns the like row for (resource, user), or ok=false.
+func (r *ResourceRepository) FindLike(tx *gorm.DB, resourceID, userID int) (model.GalgameResourceLike, bool) {
+	var like model.GalgameResourceLike
+	err := tx.Where("galgame_resource_id = ? AND user_id = ?", resourceID, userID).
+		First(&like).Error
+	if err != nil {
+		return like, false
+	}
+	return like, true
+}
+
+// CreateLike adds a like row for (resource, user).
+func (r *ResourceRepository) CreateLike(tx *gorm.DB, resourceID, userID int) error {
+	return tx.Create(&model.GalgameResourceLike{
+		GalgameResourceID: resourceID, UserID: userID,
+	}).Error
+}
+
+// DeleteLike removes a specific like row.
+func (r *ResourceRepository) DeleteLike(tx *gorm.DB, like model.GalgameResourceLike) error {
+	return tx.Delete(&like).Error
+}
+
+// AdjustLikeCount adjusts the resource.like_count counter by delta (+1/-1).
+func (r *ResourceRepository) AdjustLikeCount(tx *gorm.DB, resourceID, delta int) error {
+	return tx.Table("galgame_resource").Where("id = ?", resourceID).
+		Update("like_count", gorm.Expr("like_count + ?", delta)).Error
+}
+
+// AdjustLocalResourceCount adjusts galgame.resource_count by delta.
+func (r *ResourceRepository) AdjustLocalResourceCount(tx *gorm.DB, galgameID, delta int) error {
+	return tx.Table("galgame").Where("id = ?", galgameID).
+		Update("resource_count", gorm.Expr("resource_count + ?", delta)).Error
 }

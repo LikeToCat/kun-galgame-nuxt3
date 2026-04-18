@@ -34,3 +34,23 @@ type CreateTodoRequest struct {
 type DeleteTodoRequest struct {
 	ID int `query:"todoId" validate:"required,min=1"`
 }
+
+type UpdateHistoryRequest struct {
+	ID          int    `json:"updateLogId" validate:"required,min=1"`
+	Type        string `json:"type" validate:"required"`
+	Version     string `json:"version"`
+	ContentEnUS string `json:"content_en_us"`
+	ContentJaJP string `json:"content_ja_jp"`
+	ContentZhCN string `json:"content_zh_cn"`
+	ContentZhTW string `json:"content_zh_tw"`
+}
+
+type UpdateTodoRequest struct {
+	ID          int    `json:"todoId" validate:"required,min=1"`
+	Type        string `json:"type" validate:"required"`
+	Status      int    `json:"status"`
+	ContentEnUS string `json:"content_en_us"`
+	ContentJaJP string `json:"content_ja_jp"`
+	ContentZhCN string `json:"content_zh_cn"`
+	ContentZhTW string `json:"content_zh_tw"`
+}

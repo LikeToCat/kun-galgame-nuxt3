@@ -49,6 +49,8 @@ import (
 	topicHandler "kun-galgame-api/internal/topic/handler"
 	topicRepo "kun-galgame-api/internal/topic/repository"
 	topicService "kun-galgame-api/internal/topic/service"
+	unmoeHandler "kun-galgame-api/internal/unmoe/handler"
+	unmoeRepo "kun-galgame-api/internal/unmoe/repository"
 	updateHandler "kun-galgame-api/internal/update/handler"
 	updateRepo "kun-galgame-api/internal/update/repository"
 	"kun-galgame-api/internal/user/handler"
@@ -100,6 +102,7 @@ type App struct {
 	WebsiteCategoryHandler *websiteHandler.CategoryHandler
 	WebsiteTagHandler      *websiteHandler.TagHandler
 	UpdateHandler    *updateHandler.UpdateHandler
+	UnmoeHandler     *unmoeHandler.UnmoeHandler
 	ReportHandler    *reportHandler.ReportHandler
 	RSSHandler       *rssHandler.RSSHandler
 	GalgameHandler         *galgameHandler.GalgameHandler
@@ -141,7 +144,7 @@ func New(cfg *config.Config) *App {
 	oauthClient := oauth.NewClient(cfg.OAuth)
 
 	// Services
-	authService := service.NewAuthService(userRepo, rdb, oauthClient)
+	authService := service.NewAuthService(userRepo, rdb, oauthClient, mailer)
 	userService := service.NewUserService(userRepo, userStatsRepo, userBriefRepo, rdb, gc)
 	userContentService := service.NewUserContentService(userContentRepo, userBriefRepo, gc)
 	messageSvc := msgService.NewMessageService(messageRepository)
@@ -250,8 +253,9 @@ func New(cfg *config.Config) *App {
 		WebsiteCategoryHandler: websiteHandler.NewCategoryHandler(websiteCategorySvc),
 		WebsiteTagHandler:      websiteHandler.NewTagHandler(websiteTagSvc),
 		UpdateHandler:    updateHandler.NewUpdateHandler(updateRepo.NewUpdateRepository(db)),
+		UnmoeHandler:     unmoeHandler.NewUnmoeHandler(unmoeRepo.NewUnmoeRepository(db)),
 		ReportHandler:    reportHandler.NewReportHandler(reportRepo.NewReportRepository(db)),
-		RSSHandler:       rssHandler.NewRSSHandler(rssRepo.NewRSSRepository(db)),
+		RSSHandler:       rssHandler.NewRSSHandler(rssRepo.NewRSSRepository(db), gc, userBriefRepo),
 		GalgameHandler:         galgameHandler.NewGalgameHandler(galgameCoreSvc),
 		GalgameCommentHandler:  galgameHandler.NewCommentHandler(galgameCommentSvc),
 		GalgameResourceHandler: galgameHandler.NewResourceHandler(galgameResourceSvc),

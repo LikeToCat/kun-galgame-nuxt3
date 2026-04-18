@@ -27,3 +27,22 @@ func (r *RSSRepository) FindRecentSFWTopics() []dto.TopicRSSItem {
 		Find(&topics)
 	return topics
 }
+
+// RecentGalgameRow is the local-only projection used to seed the galgame RSS:
+// IDs and creation timestamp; metadata is fetched from wiki separately.
+type RecentGalgameRow struct {
+	ID      int    `gorm:"column:id"`
+	Created string `gorm:"column:created"`
+}
+
+// FindRecentGalgameIDs returns the most recent local galgame stub IDs.
+// Metadata (name, banner, user info) is resolved via the wiki client.
+func (r *RSSRepository) FindRecentGalgameIDs(limit int) []RecentGalgameRow {
+	var rows []RecentGalgameRow
+	r.db.Table("galgame").
+		Select("id, created").
+		Order("created DESC").
+		Limit(limit).
+		Scan(&rows)
+	return rows
+}

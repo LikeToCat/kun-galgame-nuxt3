@@ -191,6 +191,128 @@ func (s *PollService) Vote(
 }
 
 // ──────────────────────────────────────────
+// Update poll — PUT /topic/:tid/poll
+// Patches scalar fields and applies an option diff (add/update/delete).
+// Forbids editing the option *content* if it has votes; the same applies to
+// deletion. Refuses option mutations when can_change_vote=false.
+// ──────────────────────────────────────────
+
+func (s *PollService) UpdatePoll(
+	ctx context.Context,
+	uid, role int,
+	req *dto.UpdatePollRequest,
+) *errors.AppError {
+	poll, err := s.pollRepo.FindByID(req.PollID)
+	if err != nil {
+		return errors.ErrNotFound("投票不存在")
+	}
+
+	topic, err := s.topicRepo.FindByID(poll.TopicID)
+	if err != nil {
+		return errors.ErrNotFound("未找到该话题")
+	}
+	if topic.UserID != uid && role <= 2 {
+		return errors.ErrForbidden("您没有权限修改此投票")
+	}
+
+	var deadline *time.Time
+	if req.Deadline != nil {
+		if t, err := time.Parse(time.RFC3339, *req.Deadline); err == nil {
+			deadline = &t
+		}
+	}
+	scalarFields := map[string]any{
+		"title":             req.Title,
+		"description":       req.Description,
+		"type":              req.Type,
+		"min_choice":        req.MinChoice,
+		"max_choice":        req.MaxChoice,
+		"deadline":          deadline,
+		"result_visibility": req.ResultVisibility,
+		"is_anonymous":      req.IsAnonymous,
+		"can_change_vote":   req.CanChangeVote,
+	}
+
+	totalOptionOps := len(req.Options.Add) + len(req.Options.Update) + len(req.Options.Delete)
+
+	// No option diff — just patch scalars and return.
+	if totalOptionOps == 0 {
+		if err := s.pollRepo.UpdatePollFields(s.pollRepo.DB(), req.PollID, scalarFields); err != nil {
+			return errors.ErrInternal("更新投票失败")
+		}
+		return nil
+	}
+
+	if !poll.CanChangeVote {
+		return errors.ErrBadRequest("本投票结果不可修改")
+	}
+
+	// Pre-validate update/delete operations against current option vote counts.
+	touchedIDs := collectOptionIDs(req.Options)
+	current, err := s.pollRepo.FindOptionsByIDs(touchedIDs)
+	if err != nil {
+		return errors.ErrInternal("获取选项失败")
+	}
+	currentByID := make(map[int]topicModel.TopicPollOption, len(current))
+	for _, o := range current {
+		currentByID[o.ID] = o
+	}
+
+	for _, u := range req.Options.Update {
+		opt, ok := currentByID[u.OptionID]
+		if !ok {
+			return errors.ErrBadRequest(fmt.Sprintf("要更新的选项 ID %d 不存在", u.OptionID))
+		}
+		if opt.VoteCount > 0 && opt.Text != u.Text {
+			return errors.ErrBadRequest(fmt.Sprintf("选项 %q 已有投票，无法修改其内容", opt.Text))
+		}
+	}
+	for _, id := range req.Options.Delete {
+		opt, ok := currentByID[id]
+		if !ok {
+			return errors.ErrBadRequest(fmt.Sprintf("要删除的选项 ID %d 不存在", id))
+		}
+		if opt.VoteCount > 0 {
+			return errors.ErrBadRequest(fmt.Sprintf("选项 %q 已有投票，无法删除", opt.Text))
+		}
+	}
+
+	txErr := s.pollRepo.DB().Transaction(func(tx *gorm.DB) error {
+		if err := s.pollRepo.UpdatePollFields(tx, req.PollID, scalarFields); err != nil {
+			return err
+		}
+		for _, opt := range req.Options.Add {
+			if err := s.pollRepo.CreatePollOption(tx, &topicModel.TopicPollOption{
+				Text: opt.Text, PollID: req.PollID,
+			}); err != nil {
+				return err
+			}
+		}
+		for _, u := range req.Options.Update {
+			if err := s.pollRepo.UpdateOptionText(tx, u.OptionID, u.Text); err != nil {
+				return err
+			}
+		}
+		return s.pollRepo.DeleteOptionsByIDs(tx, req.Options.Delete)
+	})
+	if txErr != nil {
+		return errors.ErrInternal("更新投票失败")
+	}
+	return nil
+}
+
+// collectOptionIDs returns the union of update.option_id + delete IDs — needed
+// for the validation pre-fetch above.
+func collectOptionIDs(ops dto.PollOptionsUpdate) []int {
+	ids := make([]int, 0, len(ops.Update)+len(ops.Delete))
+	for _, u := range ops.Update {
+		ids = append(ids, u.OptionID)
+	}
+	ids = append(ids, ops.Delete...)
+	return ids
+}
+
+// ──────────────────────────────────────────
 // Delete poll
 // ──────────────────────────────────────────
 

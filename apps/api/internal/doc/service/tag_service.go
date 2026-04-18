@@ -40,3 +40,16 @@ func (s *TagService) Delete(tagID int) *errors.AppError {
 	s.tagRepo.DeleteByID(tagID)
 	return nil
 }
+
+// Update — PUT /doc/tag (admin role >= 2 enforced at the route level).
+func (s *TagService) Update(req *dto.UpdateTagRequest) (*model.DocTag, *errors.AppError) {
+	tag, err := s.tagRepo.Update(req.TagID, map[string]any{
+		"slug":        req.Slug,
+		"title":       req.Title,
+		"description": req.Description,
+	})
+	if err != nil {
+		return nil, errors.ErrInternal("更新标签失败")
+	}
+	return tag, nil
+}

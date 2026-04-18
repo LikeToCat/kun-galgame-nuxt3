@@ -81,6 +81,12 @@ type UpdateEmailRequest struct {
 	CodeSalt string `json:"codeSalt" validate:"required"`
 }
 
+// SendResetCodeRequest is the body of POST /auth/email/code/reset — used by
+// the "change email" flow. Email must NOT already belong to another user.
+type SendResetCodeRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
 // ──────────────────────────────────────────
 // User queries
 // ──────────────────────────────────────────

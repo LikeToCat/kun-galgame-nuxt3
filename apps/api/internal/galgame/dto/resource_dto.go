@@ -13,6 +13,48 @@ type GalgameResourcesRequest struct {
 	GalgameID int `query:"galgameId" validate:"required,min=1"`
 }
 
+// CreateGalgameResourceRequest is the body of POST /galgame/:gid/resource.
+type CreateGalgameResourceRequest struct {
+	GalgameID int      `json:"galgameId" validate:"required,min=1"`
+	Type      string   `json:"type" validate:"required"`
+	Language  string   `json:"language" validate:"required"`
+	Platform  string   `json:"platform" validate:"required"`
+	Size      string   `json:"size" validate:"required,max=107"`
+	Code      string   `json:"code" validate:"max=1007"`
+	Password  string   `json:"password" validate:"max=1007"`
+	Note      string   `json:"note" validate:"max=1007"`
+	Link      []string `json:"link" validate:"required,min=1,max=20,dive,url"`
+}
+
+// UpdateGalgameResourceRequest is the body of PUT /galgame/:gid/resource.
+type UpdateGalgameResourceRequest struct {
+	GalgameResourceID int      `json:"galgameResourceId" validate:"required,min=1"`
+	GalgameID         int      `json:"galgameId"`
+	Type              string   `json:"type" validate:"required"`
+	Language          string   `json:"language" validate:"required"`
+	Platform          string   `json:"platform" validate:"required"`
+	Size              string   `json:"size" validate:"required,max=107"`
+	Code              string   `json:"code" validate:"max=1007"`
+	Password          string   `json:"password" validate:"max=1007"`
+	Note              string   `json:"note" validate:"max=1007"`
+	Link              []string `json:"link" validate:"required,min=1,max=20,dive,url"`
+}
+
+// DeleteGalgameResourceRequest is the query for DELETE /galgame/:gid/resource.
+type DeleteGalgameResourceRequest struct {
+	GalgameResourceID int `query:"galgameResourceId" validate:"required,min=1"`
+}
+
+// ToggleResourceLikeRequest is the body of PUT /galgame/:gid/resource/like.
+type ToggleResourceLikeRequest struct {
+	GalgameResourceID int `json:"galgameResourceId" validate:"required,min=1"`
+}
+
+// ResourceStatusRequest is the body of PUT valid/expired endpoints.
+type ResourceStatusRequest struct {
+	GalgameResourceID int `json:"galgameResourceId" validate:"required,min=1"`
+}
+
 // ──────────────────────────────────────────
 // Responses
 // ──────────────────────────────────────────

@@ -48,6 +48,24 @@ func (h *TagHandler) CreateTag(c *fiber.Ctx) error {
 	return response.OK(c, req)
 }
 
+// UpdateTag updates an existing doc tag.
+// PUT /api/doc/tag
+func (h *TagHandler) UpdateTag(c *fiber.Ctx) error {
+	if _, appErr := middleware.MustGetUser(c); appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	var req dto.UpdateTagRequest
+	if appErr := utils.ParseAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
+	}
+	tag, appErr := h.tagService.Update(&req)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+	return response.OK(c, tag)
+}
+
 // DeleteTag deletes a doc tag.
 // DELETE /api/doc/tag
 func (h *TagHandler) DeleteTag(c *fiber.Ctx) error {

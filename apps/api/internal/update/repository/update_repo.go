@@ -39,6 +39,12 @@ func (r *UpdateRepository) CreateHistory(log *adminModel.UpdateLog) error {
 	return r.db.Create(log).Error
 }
 
+// UpdateHistory patches an update log row.
+func (r *UpdateRepository) UpdateHistory(id int, fields map[string]any) error {
+	return r.db.Model(&adminModel.UpdateLog{}).Where("id = ?", id).
+		Updates(fields).Error
+}
+
 // DeleteHistory deletes an update log by ID.
 func (r *UpdateRepository) DeleteHistory(id int) {
 	r.db.Delete(&adminModel.UpdateLog{}, id)
@@ -69,6 +75,13 @@ func (r *UpdateRepository) CreateTodo(todo *adminModel.Todo) error {
 		todo.CompletedTime = &now
 	}
 	return r.db.Create(todo).Error
+}
+
+// UpdateTodo patches a todo row. If fields["status"] == 2 the caller already
+// included completed_time; otherwise we clear it explicitly.
+func (r *UpdateRepository) UpdateTodo(id int, fields map[string]any) error {
+	return r.db.Model(&adminModel.Todo{}).Where("id = ?", id).
+		Updates(fields).Error
 }
 
 // DeleteTodo deletes a todo by ID.

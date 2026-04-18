@@ -6,8 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	mathrand "math/rand/v2"
 	"time"
 
+	"kun-galgame-api/internal/infrastructure/mail"
 	"kun-galgame-api/internal/middleware"
 	"kun-galgame-api/internal/user/dto"
 	"kun-galgame-api/internal/user/model"
@@ -22,17 +25,20 @@ type AuthService struct {
 	userRepo    *repository.UserRepository
 	rdb         *redis.Client
 	oauthClient *oauth.Client
+	mailer      *mail.Mailer
 }
 
 func NewAuthService(
 	userRepo *repository.UserRepository,
 	rdb *redis.Client,
 	oauthClient *oauth.Client,
+	mailer *mail.Mailer,
 ) *AuthService {
 	return &AuthService{
 		userRepo:    userRepo,
 		rdb:         rdb,
 		oauthClient: oauthClient,
+		mailer:      mailer,
 	}
 }
 
@@ -193,4 +199,70 @@ func generateSessionToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// SendResetEmailCode issues a 7-digit code for the "change email" flow.
+// The code is stored in Redis under "{salt}:{email}" with 10-min TTL; rate
+// limited per-email and per-IP for 30 seconds. Matches the legacy nitro
+// shape: returns the salt, code is delivered by email.
+//
+// The caller must provide clientIP to enforce the per-IP rate limit.
+func (s *AuthService) SendResetEmailCode(
+	ctx context.Context,
+	email, clientIP string,
+) (string, *errors.AppError) {
+	// The reset flow is for a user CHANGING their email. The target email
+	// must not already belong to another account.
+	if _, err := s.userRepo.FindByEmail(email); err == nil {
+		return "", errors.ErrBadRequest("该邮箱已被注册")
+	}
+
+	// 30s rate limit on both email and IP
+	if n, _ := s.rdb.Exists(ctx, "limit:email:"+email).Result(); n > 0 {
+		return "", errors.ErrBadRequest("您的发邮件的频率过快, 请 30s 后重试")
+	}
+	if clientIP != "" {
+		if n, _ := s.rdb.Exists(ctx, "limit:ip:"+clientIP).Result(); n > 0 {
+			return "", errors.ErrBadRequest("您的发邮件的频率过快, 请 30s 后重试")
+		}
+	}
+
+	code := randomDigitCode(7)
+	saltBytes := make([]byte, 32)
+	if _, err := rand.Read(saltBytes); err != nil {
+		return "", errors.ErrInternal("生成 salt 失败")
+	}
+	salt := hex.EncodeToString(saltBytes)
+
+	s.rdb.Set(ctx, salt+":"+email, code, 10*time.Minute)
+	s.rdb.Set(ctx, "limit:email:"+email, "1", 30*time.Second)
+	if clientIP != "" {
+		s.rdb.Set(ctx, "limit:ip:"+clientIP, "1", 30*time.Second)
+	}
+
+	// Send the email in the background — don't block on SMTP; log failures.
+	if s.mailer != nil {
+		go func(to, c string) {
+			body := fmt.Sprintf(
+				"Your verification code is\n%s\nYou are resetting your email. Please do not disclose this verification code.",
+				c,
+			)
+			if err := s.mailer.Send(to, "KUN Visual Novel Verification Code", body); err != nil {
+				slog.Warn("发送验证邮件失败", "email", to, "error", err)
+			}
+		}(email, code)
+	} else {
+		slog.Warn("邮件服务未配置，跳过发送验证码", "email", email, "code", code)
+	}
+
+	return salt, nil
+}
+
+// randomDigitCode returns a string of n decimal digits.
+func randomDigitCode(n int) string {
+	digits := make([]byte, n)
+	for i := range digits {
+		digits[i] = byte('0' + mathrand.IntN(10))
+	}
+	return string(digits)
 }

@@ -3,16 +3,21 @@ package service
 import (
 	"context"
 
+	"kun-galgame-api/internal/constants"
 	"kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/internal/galgame/dto"
 	"kun-galgame-api/internal/galgame/model"
 	"kun-galgame-api/internal/galgame/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/utils"
+
+	"gorm.io/gorm"
 )
 
 type ResourceService struct {
 	resourceRepo *repository.ResourceRepository
 	wikiClient   *client.GalgameClient
+	helpers      InteractionHelpers
 }
 
 func NewResourceService(
@@ -138,6 +143,247 @@ func (s *ResourceService) GetGalgameResources(
 		cards[i] = rowToCard(r, userMap[r.UserID])
 	}
 	return cards, nil
+}
+
+// ──────────────────────────────────────────
+// GetRecommendations — GET /galgame-resource/:id/recommend
+// Returns up to 6 sibling resources sorted by like_count, sharing the same galgame.
+// ──────────────────────────────────────────
+
+func (s *ResourceService) GetRecommendations(
+	ctx context.Context,
+	resourceID int,
+) ([]dto.ResourceCard, *errors.AppError) {
+	row, ok := s.resourceRepo.FindByID(resourceID)
+	if !ok {
+		return nil, errors.ErrNotFound("未找到该资源")
+	}
+	recRows := s.resourceRepo.FindRecommendations(row.GalgameID, resourceID, 6)
+	return s.buildRecommendations(ctx, recRows, row.GalgameID), nil
+}
+
+// ──────────────────────────────────────────
+// CreateResource — POST /galgame/:gid/resource
+// Creates the resource row + links + provider tags in a single transaction,
+// awarding +3 moemoepoint and bumping local resource_count.
+// ──────────────────────────────────────────
+
+func (s *ResourceService) CreateResource(
+	uid int,
+	req *dto.CreateGalgameResourceRequest,
+) *errors.AppError {
+	providers := utils.DetectProvidersFromURLs(req.Link)
+	res := &model.GalgameResource{
+		Type:      req.Type,
+		Language:  req.Language,
+		Platform:  req.Platform,
+		Size:      req.Size,
+		Code:      req.Code,
+		Password:  req.Password,
+		Note:      req.Note,
+		GalgameID: req.GalgameID,
+		UserID:    uid,
+	}
+
+	txErr := s.resourceRepo.DB().Transaction(func(tx *gorm.DB) error {
+		if err := s.resourceRepo.Create(tx, res); err != nil {
+			return err
+		}
+		if err := s.resourceRepo.ReplaceProviders(tx, res.ID, providers); err != nil {
+			return err
+		}
+		if err := s.resourceRepo.CreateLinks(tx, res.ID, req.Link); err != nil {
+			return err
+		}
+		if err := s.resourceRepo.AdjustLocalResourceCount(tx, req.GalgameID, 1); err != nil {
+			return err
+		}
+		s.helpers.AdjustMoemoepoint(tx, uid, constants.RewardCreateResource)
+		return nil
+	})
+	if txErr != nil {
+		return errors.ErrInternal("创建 Galgame 资源失败")
+	}
+	return nil
+}
+
+// ──────────────────────────────────────────
+// UpdateResource — PUT /galgame/:gid/resource
+// Replaces all links, recomputes providers, patches scalar fields.
+// ──────────────────────────────────────────
+
+func (s *ResourceService) UpdateResource(
+	uid, role int,
+	req *dto.UpdateGalgameResourceRequest,
+) *errors.AppError {
+	row, ok := s.resourceRepo.FindByID(req.GalgameResourceID)
+	if !ok {
+		return errors.ErrNotFound("未找到这个 Galgame 资源")
+	}
+	if row.UserID != uid && role < 2 {
+		return errors.ErrForbidden("您没有权限更新这个 Galgame 资源")
+	}
+
+	providers := utils.DetectProvidersFromURLs(req.Link)
+	fields := map[string]any{
+		"type":     req.Type,
+		"language": req.Language,
+		"platform": req.Platform,
+		"size":     req.Size,
+		"code":     req.Code,
+		"password": req.Password,
+		"note":     req.Note,
+	}
+
+	txErr := s.resourceRepo.DB().Transaction(func(tx *gorm.DB) error {
+		if err := s.resourceRepo.UpdateFields(tx, req.GalgameResourceID, fields); err != nil {
+			return err
+		}
+		if err := s.resourceRepo.DeleteLinks(tx, req.GalgameResourceID); err != nil {
+			return err
+		}
+		if err := s.resourceRepo.CreateLinks(tx, req.GalgameResourceID, req.Link); err != nil {
+			return err
+		}
+		if err := s.resourceRepo.ReplaceProviders(tx, req.GalgameResourceID, providers); err != nil {
+			return err
+		}
+		return nil
+	})
+	if txErr != nil {
+		return errors.ErrInternal("更新 Galgame 资源失败")
+	}
+	return nil
+}
+
+// ──────────────────────────────────────────
+// DeleteResource — DELETE /galgame/:gid/resource
+// Deducts 5 + like_count moemoepoint from the original uploader and decrements
+// the galgame resource_count. Cascade deletes links/likes via FK.
+// ──────────────────────────────────────────
+
+func (s *ResourceService) DeleteResource(
+	uid, role, resourceID int,
+) *errors.AppError {
+	row, ok := s.resourceRepo.FindByID(resourceID)
+	if !ok {
+		return errors.ErrNotFound("未找到该 Galgame 资源")
+	}
+	if row.UserID != uid && role < 2 {
+		return errors.ErrForbidden("您没有权限删除这个 Galgame 资源")
+	}
+
+	txErr := s.resourceRepo.DB().Transaction(func(tx *gorm.DB) error {
+		s.helpers.AdjustMoemoepoint(tx, row.UserID, -(row.LikeCount + 5))
+		if err := s.resourceRepo.DeleteByID(tx, resourceID); err != nil {
+			return err
+		}
+		return s.resourceRepo.AdjustLocalResourceCount(tx, row.GalgameID, -1)
+	})
+	if txErr != nil {
+		return errors.ErrInternal("删除 Galgame 资源失败")
+	}
+	return nil
+}
+
+// ──────────────────────────────────────────
+// ToggleLike — PUT /galgame/:gid/resource/like
+// Self-like is rejected. Toggles the like row + maintains like_count and a +/-1
+// moemoepoint swing on the liker (matches existing nitro behaviour).
+// ──────────────────────────────────────────
+
+func (s *ResourceService) ToggleLike(
+	uid int,
+	req *dto.ToggleResourceLikeRequest,
+) *errors.AppError {
+	row, ok := s.resourceRepo.FindByID(req.GalgameResourceID)
+	if !ok {
+		return errors.ErrNotFound("未找到该资源")
+	}
+	if row.UserID == uid {
+		return errors.ErrBadRequest("您不能给自己的资源点赞")
+	}
+
+	links := s.resourceRepo.FindLinks(req.GalgameResourceID)
+	preview := ""
+	if len(links) > 0 {
+		preview = truncate(links[0], constants.TextPreviewLength)
+	}
+
+	txErr := s.resourceRepo.DB().Transaction(func(tx *gorm.DB) error {
+		existing, has := s.resourceRepo.FindLike(tx, req.GalgameResourceID, uid)
+		var delta int
+		if has {
+			if err := s.resourceRepo.DeleteLike(tx, existing); err != nil {
+				return err
+			}
+			delta = -1
+		} else {
+			if err := s.resourceRepo.CreateLike(tx, req.GalgameResourceID, uid); err != nil {
+				return err
+			}
+			delta = 1
+		}
+		if err := s.resourceRepo.AdjustLikeCount(tx, req.GalgameResourceID, delta); err != nil {
+			return err
+		}
+		s.helpers.AdjustMoemoepoint(tx, uid, delta)
+		s.helpers.CreateGalgameMessageWithContent(
+			tx, uid, row.UserID, "liked", preview, row.GalgameID,
+		)
+		return nil
+	})
+	if txErr != nil {
+		return errors.ErrInternal("操作失败")
+	}
+	return nil
+}
+
+// ──────────────────────────────────────────
+// MarkValid / MarkExpired — PUT valid|expired
+// MarkValid is restricted to the original uploader; MarkExpired is open.
+// MarkExpired sends a non-deduped notification to the uploader.
+// ──────────────────────────────────────────
+
+func (s *ResourceService) MarkValid(uid int, resourceID int) *errors.AppError {
+	row, ok := s.resourceRepo.FindByID(resourceID)
+	if !ok || row.UserID != uid {
+		return errors.ErrNotFound("未找到这个 Galgame 资源")
+	}
+	if err := s.resourceRepo.UpdateStatus(s.resourceRepo.DB(), resourceID, 0); err != nil {
+		return errors.ErrInternal("更新失败")
+	}
+	return nil
+}
+
+func (s *ResourceService) MarkExpired(uid int, resourceID int) *errors.AppError {
+	row, ok := s.resourceRepo.FindByID(resourceID)
+	if !ok {
+		return errors.ErrNotFound("未找到该 Galgame 资源")
+	}
+	if row.Status == 1 {
+		return errors.ErrBadRequest("该资源已经被标记为失效")
+	}
+
+	links := s.resourceRepo.FindLinks(resourceID)
+	preview := ""
+	if len(links) > 0 {
+		preview = truncate(links[0], constants.TextPreviewLength)
+	}
+
+	txErr := s.resourceRepo.DB().Transaction(func(tx *gorm.DB) error {
+		if err := s.resourceRepo.UpdateStatus(tx, resourceID, 1); err != nil {
+			return err
+		}
+		s.helpers.CreateGalgameMessageWithContent(
+			tx, uid, row.UserID, "expired", preview, row.GalgameID,
+		)
+		return nil
+	})
+	if txErr != nil {
+		return errors.ErrInternal("更新失败")
+	}
+	return nil
 }
 
 // ──────────────────────────────────────────
