@@ -65,6 +65,22 @@ export const useKunFetch = createUseFetch({
     return `${base}/api`
   }),
   credentials: 'include',
+  // SSR is cross-origin from Nuxt → Go API, so `credentials: 'include'` is a
+  // no-op on the server (there's no browser-side cookie store to pull from).
+  // Manually forward the incoming request's Cookie header so the Go backend
+  // sees the authenticated session during SSR. Without this, per-user flags
+  // like isLiked / isFavorited / isUpvoted come back false on the first
+  // render and stay un-highlighted until the user interacts.
+  onRequest({ options }) {
+    if (import.meta.server) {
+      const headers = useRequestHeaders(['cookie'])
+      if (headers.cookie) {
+        const merged = new Headers(options.headers as HeadersInit | undefined)
+        merged.set('cookie', headers.cookie)
+        options.headers = merged
+      }
+    }
+  },
   async onResponseError({ response }) {
     const resp = response._data as KunApiResponse<unknown> | undefined
     if (resp && resp.code !== 0) {
@@ -75,7 +91,11 @@ export const useKunFetch = createUseFetch({
     if (!resp || resp.code !== 0) {
       return null
     }
-    return resp.data
+    // Go's response.OKMessage omits `data`. Callers typically gate optimistic
+    // updates on `if (result)`, so returning the message keeps the truthy
+    // success signal intact while still distinguishing from the `null`
+    // returned for real failures.
+    return resp.data !== undefined ? resp.data : resp.message
   }
 })
 
@@ -96,12 +116,30 @@ export const kunFetch = async <T>(
   options?: Record<string, unknown>
 ): Promise<T | null> => {
   const config = useRuntimeConfig()
-  const apiBase = `${config.public.apiBaseUrl}/api`
+  // Prefer the server-only base URL when running on SSR — it bypasses
+  // the public proxy and goes straight to the Go backend.
+  const apiBase = import.meta.server
+    ? `${config.apiBaseUrl}/api`
+    : `${config.public.apiBaseUrl}/api`
+
+  // Cookie forwarding (SSR): same rationale as useKunFetch above — without
+  // this, server-side callers (e.g. loadInitialReplies awaited in setup())
+  // are unauthenticated and the reply list comes back with isLiked=false.
+  const headers = new Headers(
+    (options as { headers?: HeadersInit } | undefined)?.headers
+  )
+  if (import.meta.server) {
+    const requestHeaders = useRequestHeaders(['cookie'])
+    if (requestHeaders.cookie) {
+      headers.set('cookie', requestHeaders.cookie)
+    }
+  }
 
   try {
     const resp = await $fetch<KunApiResponse<T>>(`${apiBase}${url}`, {
       credentials: 'include',
-      ...options
+      ...options,
+      headers
     })
 
     if (!resp || resp.code !== 0) {
@@ -111,7 +149,9 @@ export const kunFetch = async <T>(
       return null
     }
 
-    return resp.data
+    // Same fallback rationale as useKunFetch above: OKMessage responses
+    // have no `data`, but callers check `if (result)` to confirm success.
+    return resp.data !== undefined ? resp.data : (resp.message as T)
   } catch {
     if (import.meta.client) {
       useMessage('网络请求失败，请稍后重试', 'error')

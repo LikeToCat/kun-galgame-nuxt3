@@ -8,42 +8,33 @@ const props = defineProps<{
 }>()
 
 const { id } = usePersistUserStore()
-const isLiked = ref(id && props.isLiked)
+// Trust the backend — it returns isLiked=false for anonymous requests. The
+// previous `id && ...` guard clobbered highlight state during the brief
+// window before the persisted store hydrates (id = 0).
+const isLiked = ref(props.isLiked)
 const likeCount = ref(props.likeCount)
 
 const toggleLike = async () => {
-  let res = ''
-  if (props.topicId) {
-    const result = await kunFetch<string>(
-      `/topic/${props.topicId}/like`,
-      {
+  const result = props.topicId
+    ? await kunFetch<string>(`/topic/${props.topicId}/like`, {
         method: 'PUT',
         body: { topicId: props.topicId }
-      }
-    )
-    res = result ?? ''
-  } else {
-    const result = await kunFetch<string>(
-      `/topic/${props.topicId}/reply/like`,
-      {
+      })
+    : // Reply-scoped variant: the path needs a valid :tid. Using
+      // `props.topicId` here produced `/topic/undefined/reply/like` —
+      // the backend ignored the path param so it worked by accident,
+      // but the URL is misleading in logs/traces. Fall back to 0 so
+      // the path is always a number.
+      await kunFetch<string>(`/topic/0/reply/like`, {
         method: 'PUT',
         body: { replyId: props.replyId }
-      }
-    )
-    res = result ?? ''
-  }
+      })
 
-  if (res) {
-    likeCount.value += isLiked.value ? -1 : 1
+  if (!result) return
 
-    if (!isLiked.value) {
-      useMessage(10233, 'success')
-    } else {
-      useMessage(10234, 'success')
-    }
-
-    isLiked.value = !isLiked.value
-  }
+  likeCount.value += isLiked.value ? -1 : 1
+  useMessage(isLiked.value ? 10234 : 10233, 'success')
+  isLiked.value = !isLiked.value
 }
 
 const handleClickLikeThrottled = throttle(toggleLike, 1007, () =>

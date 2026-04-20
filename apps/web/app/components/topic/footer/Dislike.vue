@@ -12,38 +12,23 @@ const isDisliked = ref(props.isDisliked)
 const dislikeCount = ref(props.dislikeCount)
 
 const toggleDislike = async () => {
-  let res = ''
-  if (props.topicId) {
-    const result = await kunFetch<string>(
-      `/topic/${props.topicId}/dislike`,
-      {
+  const result = props.topicId
+    ? await kunFetch<string>(`/topic/${props.topicId}/dislike`, {
         method: 'PUT',
         body: { topicId: props.topicId }
-      }
-    )
-    res = result ?? ''
-  } else {
-    const result = await kunFetch<string>(
-      `/topic/${props.topicId}/reply/dislike`,
-      {
+      })
+    : // Reply branch: same URL-shape fix as Like.vue — avoid
+      // `/topic/undefined/reply/dislike` from an undefined topicId.
+      await kunFetch<string>(`/topic/0/reply/dislike`, {
         method: 'PUT',
         body: { replyId: props.replyId }
-      }
-    )
-    res = result ?? ''
-  }
+      })
 
-  if (res) {
-    dislikeCount.value += isDisliked.value ? -1 : 1
+  if (!result) return
 
-    if (!isDisliked.value) {
-      useMessage(10225, 'success')
-    } else {
-      useMessage(10226, 'success')
-    }
-
-    isDisliked.value = !isDisliked.value
-  }
+  dislikeCount.value += isDisliked.value ? -1 : 1
+  useMessage(isDisliked.value ? 10226 : 10225, 'success')
+  isDisliked.value = !isDisliked.value
 }
 
 const handleClickDislikeThrottled = throttle(toggleDislike, 1007, () =>

@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"kun-galgame-api/internal/topic/model"
 
 	"gorm.io/gorm"
@@ -38,7 +40,7 @@ type CommentRow struct {
 	TargetUserName string
 	TargetAvatar   string
 	LikeCount      int
-	CreatedAt      string
+	CreatedAt      time.Time
 }
 
 func (r *CommentRepository) FindCommentsByReplyIDs(replyIDs []int) (map[int][]CommentRow, error) {

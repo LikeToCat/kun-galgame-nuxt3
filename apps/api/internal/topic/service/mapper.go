@@ -172,6 +172,7 @@ func (s *ReplyService) buildReplyResponses(
 					Content:    c.Content,
 					IsLiked:    isLiked,
 					LikeCount:  c.LikeCount,
+					Created:    c.CreatedAt,
 				})
 			}
 		}
