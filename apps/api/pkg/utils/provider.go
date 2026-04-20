@@ -57,3 +57,127 @@ func DetectProvidersFromURLs(urls []string) []string {
 	}
 	return out
 }
+
+// providerNameSubstrs is the granular URL→display-name map ported from
+// `app/constants/galgameResource.ts:GALGAME_RESOURCE_PROVIDER_MAP`. Each key
+// is a substring matched case-insensitively against the URL. The display
+// names are stored verbatim in the `galgame_resource.provider_name` jsonb
+// column so the UI no longer has to do a runtime lookup or HTML title fetch.
+//
+// IMPORTANT: keep ordering deliberate. More specific patterns (e.g.
+// "tieba.baidu.com") MUST appear before less specific ones (e.g. "baidu.com")
+// because we return on first match.
+var providerNameSubstrs = []struct {
+	pattern string
+	name    string
+}{
+	{"magnet", "磁力下载"},
+	{"tieba.baidu.com", "百度贴吧"},
+	{"baidu.com", "百度网盘"},
+	{"quark.cn", "夸克网盘"},
+	{"alipan.com", "阿里云盘"},
+	{"123912.com", "123 云盘"},
+	{"123865.com", "123 云盘"},
+	{"123pan.com", "123 云盘"},
+	{"123pan.cn", "123 云盘"},
+	{"xunlei.com", "迅雷云盘"},
+	{"weiyun.com", "腾讯微云"},
+	{"139.com", "和彩云 (移动云盘)"},
+	{"189.cn", "天翼云盘"},
+	{"uc.cn", "UC 网盘"},
+	{"lanzou", "蓝奏云"},
+	{"ctfile.com", "城通网盘"},
+	{"nullcloud.top", "未知云盘"},
+	{"mypikpak.com", "PikPak"},
+	{"sharepoint.com", "OneDrive"},
+	{"sharepoint.cn", "OneDrive"},
+	{"1drv.ms", "OneDrive"},
+	{"mega.nz", "MEGA"},
+	{"google.com", "Google 云盘"},
+	{"yandex.com", "Yandex Disk"},
+	{"gofile.io", "GoFile"},
+	{"ipfs.dweb.link", "IPFS"},
+	{"steampowered.com", "Steam"},
+	{"epicgames.com", "Epic 游戏商店"},
+	{"itch.io", "itch.io"},
+	{"github.com", "GitHub"},
+	{"bilibili.com", "哔哩哔哩"},
+	{"t.me", "Telegram"},
+	{"archive.org", "Internet Archive"},
+	{"nyaa.si", "Nyaa"},
+	{"2dfan.com", "2BFun"},
+	{"ddfan.org", "2BFun"},
+	{"ddfan.top", "2BFun"},
+	{"galge.top", "2BFun"},
+	{"hacg.uno", "琉璃神社 (HACG)"},
+	{"kungal.com", "鲲 Galgame 论坛"},
+	{"moyu.moe", "鲲 Galgame 补丁"},
+	{"anime-sharing.com", "Anime-Sharing"},
+	{"e-hentai.org", "E-Hentai"},
+	{"dmm.co.jp", "DMM"},
+	{"zi6.cc", "梓澪"},
+	{"zi0.cc", "梓澪"},
+	{"zi8.cc", "梓澪"},
+	{"shinnku.com", "真红小站"},
+	{"shinnku.org", "真红小站"},
+	{"oo0o.ooo", "真红小站"},
+	{"touchgal.io", "TouchGal"},
+	{"touchgal.us", "TouchGal"},
+	{"dlgal.com", "GGbases"},
+	{"lycorisgal.com", "LycorisGal"},
+}
+
+// DetectProviderNameFromURL returns the display name for a URL, falling back
+// to the URL's host when no pattern matches. Returns "" only for an empty input.
+func DetectProviderNameFromURL(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	s := strings.ToLower(rawURL)
+	for _, entry := range providerNameSubstrs {
+		if strings.Contains(s, entry.pattern) {
+			return entry.name
+		}
+	}
+	return hostFromURL(rawURL)
+}
+
+// DetectProviderNamesFromURLs returns the deduped display names for a slice
+// of URLs. Order is the order of first appearance (stable for tests).
+func DetectProviderNamesFromURLs(urls []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(urls))
+	for _, u := range urls {
+		name := DetectProviderNameFromURL(u)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out
+}
+
+// hostFromURL extracts the bare hostname (no scheme, no path, no port). On
+// any parse failure it returns the original string — the caller will store
+// whatever it was given rather than dropping the link silently.
+func hostFromURL(raw string) string {
+	s := raw
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	if i := strings.IndexAny(s, "/?#"); i >= 0 {
+		s = s[:i]
+	}
+	if i := strings.LastIndex(s, "@"); i >= 0 {
+		s = s[i+1:]
+	}
+	if i := strings.LastIndex(s, ":"); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.TrimPrefix(strings.ToLower(s), "www.")
+	if s == "" {
+		return raw
+	}
+	return s
+}

@@ -1,19 +1,26 @@
 <script setup lang="ts">
-import { useGalgameResourceProvider } from '~/composables/galgame/useGalgameResourceProvider'
-
 const { id, role } = usePersistUserStore()
 const {
   isShowPublish,
   resource: storeResource,
   rewriteResourceId
 } = storeToRefs(useTempGalgameResourceStore())
-const { providerName, resolveProviderName } = useGalgameResourceProvider()
 
 const props = defineProps<{
   resource: GalgameResource
   resourceTypeLabel: string
   refresh: () => void
 }>()
+
+// Backend-computed labels (e.g. "百度网盘 / OneDrive"). Falls back to the
+// raw domain when the resource pre-dates the backfill or matches no rule.
+const providerName = computed(() => {
+  const names = props.resource.providerNames
+  if (names && names.length > 0) {
+    return names.join(' / ')
+  }
+  return props.resource.linkDomain
+})
 
 const isFetching = ref(false)
 const detail = ref<null | GalgameResourceDetailLink>(null)
@@ -105,9 +112,6 @@ const handleRewriteResource = async () => {
   if (res) _handleEdit()
 }
 
-onMounted(() => {
-  resolveProviderName(props.resource.linkDomain)
-})
 </script>
 
 <template>

@@ -8,7 +8,7 @@ import {
   KUN_GALGAME_RESOURCE_LANGUAGE_MAP,
   KUN_GALGAME_RESOURCE_PLATFORM_MAP
 } from '~/constants/galgame'
-import { useGalgameResourceProvider } from '~/composables/galgame/useGalgameResourceProvider'
+
 const props = defineProps<{
   resource: GalgameResource
   refresh: () => void
@@ -16,7 +16,16 @@ const props = defineProps<{
 
 const isFetching = ref(false)
 const { id } = usePersistUserStore()
-const { providerName, resolveProviderName } = useGalgameResourceProvider()
+
+// Backend-computed labels (e.g. "百度网盘 / OneDrive"). Falls back to the
+// raw domain when the resource pre-dates the backfill or matches no rule.
+const providerName = computed(() => {
+  const names = props.resource.providerNames
+  if (names && names.length > 0) {
+    return names.join(' / ')
+  }
+  return props.resource.linkDomain
+})
 
 const handleMarkValid = async (
   galgameId: number,
@@ -41,9 +50,6 @@ const handleMarkValid = async (
   }
 }
 
-onMounted(() => {
-  resolveProviderName(props.resource.linkDomain)
-})
 </script>
 
 <template>

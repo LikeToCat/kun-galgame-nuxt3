@@ -76,47 +76,49 @@ type KunLanguage struct {
 
 // ResourceCard is the shape returned in list views (no links/code/password).
 type ResourceCard struct {
-	ID          int         `json:"id"`
-	View        int         `json:"view"`
-	GalgameID   int         `json:"galgameId"`
-	User        UserBrief   `json:"user"`
-	Type        string      `json:"type"`
-	Language    string      `json:"language"`
-	Platform    string      `json:"platform"`
-	Size        string      `json:"size"`
-	Status      int         `json:"status"`
-	Download    int         `json:"download"`
-	LikeCount   int         `json:"likeCount"`
-	IsLiked     bool        `json:"isLiked"`
-	LinkDomain  string      `json:"linkDomain"`
-	Note        string      `json:"note"`
-	Created     string      `json:"created"`
-	Edited      *string     `json:"edited"`
-	GalgameName KunLanguage `json:"galgameName,omitempty"`
+	ID            int         `json:"id"`
+	View          int         `json:"view"`
+	GalgameID     int         `json:"galgameId"`
+	User          UserBrief   `json:"user"`
+	Type          string      `json:"type"`
+	Language      string      `json:"language"`
+	Platform      string      `json:"platform"`
+	Size          string      `json:"size"`
+	Status        int         `json:"status"`
+	Download      int         `json:"download"`
+	LikeCount     int         `json:"likeCount"`
+	IsLiked       bool        `json:"isLiked"`
+	LinkDomain    string      `json:"linkDomain"`
+	ProviderNames []string    `json:"providerNames"`
+	Note          string      `json:"note"`
+	Created       string      `json:"created"`
+	Edited        *string     `json:"edited"`
+	GalgameName   KunLanguage `json:"galgameName,omitempty"`
 }
 
 // ResourceDownloadDetail is returned by GET /galgame-resource/:id/detail.
 // Includes download links, code, password, note.
 type ResourceDownloadDetail struct {
-	ID         int       `json:"id"`
-	View       int       `json:"view"`
-	GalgameID  int       `json:"galgameId"`
-	User       UserBrief `json:"user"`
-	Type       string    `json:"type"`
-	Language   string    `json:"language"`
-	Platform   string    `json:"platform"`
-	Size       string    `json:"size"`
-	Status     int       `json:"status"`
-	Download   int       `json:"download"`
-	LikeCount  int       `json:"likeCount"`
-	IsLiked    bool      `json:"isLiked"`
-	LinkDomain string    `json:"linkDomain"`
-	Link       []string  `json:"link"`
-	Code       string    `json:"code"`
-	Password   string    `json:"password"`
-	Note       string    `json:"note"`
-	Created    string    `json:"created"`
-	Edited     *string   `json:"edited"`
+	ID            int       `json:"id"`
+	View          int       `json:"view"`
+	GalgameID     int       `json:"galgameId"`
+	User          UserBrief `json:"user"`
+	Type          string    `json:"type"`
+	Language      string    `json:"language"`
+	Platform      string    `json:"platform"`
+	Size          string    `json:"size"`
+	Status        int       `json:"status"`
+	Download      int       `json:"download"`
+	LikeCount     int       `json:"likeCount"`
+	IsLiked       bool      `json:"isLiked"`
+	LinkDomain    string    `json:"linkDomain"`
+	ProviderNames []string  `json:"providerNames"`
+	Link          []string  `json:"link"`
+	Code          string    `json:"code"`
+	Password      string    `json:"password"`
+	Note          string    `json:"note"`
+	Created       string    `json:"created"`
+	Edited        *string   `json:"edited"`
 }
 
 // ResourceGalgameSummary is the galgame info shown on resource detail page.

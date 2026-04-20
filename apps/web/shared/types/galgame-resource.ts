@@ -12,6 +12,12 @@ export interface GalgameResource {
   likeCount: number
   isLiked: boolean
   linkDomain: string
+  /**
+   * Pre-computed display labels for the resource's hosting providers
+   * (e.g. ["百度网盘", "OneDrive"]). Resolved by the backend at write time
+   * — do not re-derive from `linkDomain` in the UI.
+   */
+  providerNames: string[]
   note: string
   created: Date | string
   edited: Date | string | null

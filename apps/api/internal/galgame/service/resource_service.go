@@ -173,6 +173,7 @@ func (s *ResourceService) CreateResource(
 	req *dto.CreateGalgameResourceRequest,
 ) *errors.AppError {
 	providers := utils.DetectProvidersFromURLs(req.Link)
+	providerNames := utils.DetectProviderNamesFromURLs(req.Link)
 	res := &model.GalgameResource{
 		Type:      req.Type,
 		Language:  req.Language,
@@ -190,6 +191,9 @@ func (s *ResourceService) CreateResource(
 			return err
 		}
 		if err := s.resourceRepo.ReplaceProviders(tx, res.ID, providers); err != nil {
+			return err
+		}
+		if err := s.resourceRepo.ReplaceProviderNames(tx, res.ID, providerNames); err != nil {
 			return err
 		}
 		if err := s.resourceRepo.CreateLinks(tx, res.ID, req.Link); err != nil {
@@ -225,6 +229,7 @@ func (s *ResourceService) UpdateResource(
 	}
 
 	providers := utils.DetectProvidersFromURLs(req.Link)
+	providerNames := utils.DetectProviderNamesFromURLs(req.Link)
 	fields := map[string]any{
 		"type":     req.Type,
 		"language": req.Language,
@@ -248,7 +253,7 @@ func (s *ResourceService) UpdateResource(
 		if err := s.resourceRepo.ReplaceProviders(tx, req.GalgameResourceID, providers); err != nil {
 			return err
 		}
-		return nil
+		return s.resourceRepo.ReplaceProviderNames(tx, req.GalgameResourceID, providerNames)
 	})
 	if txErr != nil {
 		return errors.ErrInternal("更新 Galgame 资源失败")

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  GALGAME_RESOURCE_PROVIDER_MAP,
   GALGAME_RESOURCE_TYPE_ICON_MAP,
   GALGAME_RESOURCE_PLATFORM_ICON_MAP
 } from '~/constants/galgameResource'

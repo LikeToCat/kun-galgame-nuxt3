@@ -1,11 +1,27 @@
 package service
 
 import (
+	"encoding/json"
+
 	"kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/internal/galgame/dto"
 	"kun-galgame-api/internal/galgame/model"
 	userModel "kun-galgame-api/internal/user/model"
 )
+
+// decodeProviderNames safely turns the row's jsonb provider_name bytes into a
+// string slice. A null/empty/invalid value yields an empty slice rather than
+// nil so the JSON response stays `[]` (frontend-friendly).
+func decodeProviderNames(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return []string{}
+	}
+	var out []string
+	if err := json.Unmarshal(raw, &out); err != nil || out == nil {
+		return []string{}
+	}
+	return out
+}
 
 // collectIDs extracts galgame IDs and user IDs from a list of resource rows.
 func collectIDs(rows []model.GalgameResourceRow) (galgameIDs, userIDs []int) {
@@ -60,22 +76,23 @@ func userBriefToDTO(u userModel.UserBrief) dto.UserBrief {
 // rowToCard maps a resource row to the list-card DTO.
 func rowToCard(r model.GalgameResourceRow, u userModel.UserBrief) dto.ResourceCard {
 	return dto.ResourceCard{
-		ID:         r.ID,
-		View:       r.View,
-		GalgameID:  r.GalgameID,
-		User:       userBriefToDTO(u),
-		Type:       r.Type,
-		Language:   r.Language,
-		Platform:   r.Platform,
-		Size:       r.Size,
-		Status:     r.Status,
-		Download:   r.Download,
-		LikeCount:  r.LikeCount,
-		IsLiked:    false,
-		LinkDomain: "",
-		Note:       r.Note,
-		Created:    r.Created,
-		Edited:     r.Edited,
+		ID:            r.ID,
+		View:          r.View,
+		GalgameID:     r.GalgameID,
+		User:          userBriefToDTO(u),
+		Type:          r.Type,
+		Language:      r.Language,
+		Platform:      r.Platform,
+		Size:          r.Size,
+		Status:        r.Status,
+		Download:      r.Download,
+		LikeCount:     r.LikeCount,
+		IsLiked:       false,
+		LinkDomain:    "",
+		ProviderNames: decodeProviderNames(r.ProviderName),
+		Note:          r.Note,
+		Created:       r.Created,
+		Edited:        r.Edited,
 	}
 }
 
@@ -92,24 +109,25 @@ func rowToDownloadDetail(
 		linkDomain = links[0]
 	}
 	return dto.ResourceDownloadDetail{
-		ID:         r.ID,
-		View:       r.View,
-		GalgameID:  r.GalgameID,
-		User:       userBriefToDTO(owner),
-		Type:       r.Type,
-		Language:   r.Language,
-		Platform:   r.Platform,
-		Size:       r.Size,
-		Status:     r.Status,
-		Download:   r.Download,
-		LikeCount:  r.LikeCount,
-		IsLiked:    isLiked,
-		LinkDomain: linkDomain,
-		Link:       links,
-		Code:       r.Code,
-		Password:   r.Password,
-		Note:       r.Note,
-		Created:    r.Created,
-		Edited:     r.Edited,
+		ID:            r.ID,
+		View:          r.View,
+		GalgameID:     r.GalgameID,
+		User:          userBriefToDTO(owner),
+		Type:          r.Type,
+		Language:      r.Language,
+		Platform:      r.Platform,
+		Size:          r.Size,
+		Status:        r.Status,
+		Download:      r.Download,
+		LikeCount:     r.LikeCount,
+		IsLiked:       isLiked,
+		LinkDomain:    linkDomain,
+		ProviderNames: decodeProviderNames(r.ProviderName),
+		Link:          links,
+		Code:          r.Code,
+		Password:      r.Password,
+		Note:          r.Note,
+		Created:       r.Created,
+		Edited:        r.Edited,
 	}
 }

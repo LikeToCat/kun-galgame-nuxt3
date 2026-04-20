@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"encoding/json"
+
 	"kun-galgame-api/internal/galgame/model"
 	userModel "kun-galgame-api/internal/user/model"
 
@@ -160,6 +162,23 @@ func (r *ResourceRepository) ReplaceProviders(tx *gorm.DB, resourceID int, provi
 	return tx.Exec(
 		"UPDATE galgame_resource SET provider = ? WHERE id = ?",
 		providers, resourceID,
+	).Error
+}
+
+// ReplaceProviderNames overwrites the jsonb provider_name column with the
+// given display labels (e.g. ["百度网盘", "OneDrive"]). Stored as JSON text;
+// the read side either passes through the raw bytes or unmarshals to []string.
+func (r *ResourceRepository) ReplaceProviderNames(tx *gorm.DB, resourceID int, names []string) error {
+	if names == nil {
+		names = []string{}
+	}
+	encoded, err := json.Marshal(names)
+	if err != nil {
+		return err
+	}
+	return tx.Exec(
+		"UPDATE galgame_resource SET provider_name = ?::jsonb WHERE id = ?",
+		string(encoded), resourceID,
 	).Error
 }
 
