@@ -55,12 +55,17 @@ func (r *CommentRepository) CountsForToolsets(toolsetIDs []int) map[int]int {
 }
 
 // FindPaginated returns the paginated comments for a toolset ordered by
-// created DESC.
-func (r *CommentRepository) FindPaginated(toolsetID, page, limit int) []model.GalgameToolsetComment {
+// created in the requested direction. `sortOrder` accepts "asc" / "desc";
+// any other value falls back to "desc".
+func (r *CommentRepository) FindPaginated(toolsetID, page, limit int, sortOrder string) []model.GalgameToolsetComment {
 	var comments []model.GalgameToolsetComment
 	offset := (page - 1) * limit
+	dir := "DESC"
+	if sortOrder == "asc" {
+		dir = "ASC"
+	}
 	r.db.Where("toolset_id = ?", toolsetID).
-		Order("created DESC").
+		Order("created " + dir).
 		Offset(offset).Limit(limit).
 		Find(&comments)
 	return comments
@@ -90,6 +95,20 @@ func (r *CommentRepository) FindUser(userID int) userModel.UserBrief {
 	var u userModel.UserBrief
 	r.db.Where("id = ?", userID).First(&u)
 	return u
+}
+
+// FindUsersByIDs batch-loads UserBriefs keyed by id.
+func (r *CommentRepository) FindUsersByIDs(ids []int) map[int]userModel.UserBrief {
+	if len(ids) == 0 {
+		return map[int]userModel.UserBrief{}
+	}
+	var users []userModel.UserBrief
+	r.db.Where("id IN ?", ids).Find(&users)
+	out := make(map[int]userModel.UserBrief, len(users))
+	for _, u := range users {
+		out[u.ID] = u
+	}
+	return out
 }
 
 // ──────────────────────────────────────────

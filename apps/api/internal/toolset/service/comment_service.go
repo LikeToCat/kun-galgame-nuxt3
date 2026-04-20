@@ -27,33 +27,63 @@ func NewCommentService(
 }
 
 // ──────────────────────────────────────────
-// GetComments — GET /toolset/:id/comment
+// GetComments — GET /toolset/:id/comment/all
+// Returns the camelCase response shape consumed by the frontend
+// (commentData + total, with `targetUser` filled in for replies).
 // ──────────────────────────────────────────
 
 func (s *CommentService) GetComments(
 	toolsetID int,
 	req *dto.CommentListRequest,
-) ([]dto.CommentItem, int64) {
+) *dto.ToolsetCommentListResponse {
 	total := s.commentRepo.CountByToolset(toolsetID)
-	rows := s.commentRepo.FindPaginated(toolsetID, req.Page, req.Limit)
+	rows := s.commentRepo.FindPaginated(toolsetID, req.Page, req.Limit, req.SortOrder)
 
-	items := make([]dto.CommentItem, 0, len(rows))
+	// Batch-resolve unique authors + parent authors to avoid N+1 lookups.
+	userIDSet := map[int]struct{}{}
+	parentIDs := []int{}
 	for _, cm := range rows {
-		item := dto.CommentItem{
-			GalgameToolsetComment: cm,
-			User:                  s.commentRepo.FindUser(cm.UserID),
-		}
-		// If this is a reply, fetch parent comment's user.
+		userIDSet[cm.UserID] = struct{}{}
 		if cm.ParentID != nil {
-			if parent, err := s.commentRepo.FindByID(*cm.ParentID); err == nil {
-				pu := s.commentRepo.FindUser(parent.UserID)
-				item.ParentUser = &pu
+			parentIDs = append(parentIDs, *cm.ParentID)
+		}
+	}
+	parentUserByID := map[int]int{}
+	for _, pid := range parentIDs {
+		if parent, err := s.commentRepo.FindByID(pid); err == nil {
+			parentUserByID[pid] = parent.UserID
+			userIDSet[parent.UserID] = struct{}{}
+		}
+	}
+	uids := make([]int, 0, len(userIDSet))
+	for id := range userIDSet {
+		uids = append(uids, id)
+	}
+	userMap := s.commentRepo.FindUsersByIDs(uids)
+
+	items := make([]dto.ToolsetCommentItem, 0, len(rows))
+	for _, cm := range rows {
+		item := dto.ToolsetCommentItem{
+			ID:        cm.ID,
+			ToolsetID: cm.ToolsetID,
+			Content:   cm.Content,
+			Created:   cm.CreatedAt,
+			Edited:    cm.Edited,
+			ParentID:  cm.ParentID,
+			UserID:    cm.UserID,
+			Reply:     []dto.ToolsetCommentItem{},
+			User:      userMap[cm.UserID],
+		}
+		if cm.ParentID != nil {
+			if puid, ok := parentUserByID[*cm.ParentID]; ok {
+				pu := userMap[puid]
+				item.TargetUser = &pu
 			}
 		}
 		items = append(items, item)
 	}
 
-	return items, total
+	return &dto.ToolsetCommentListResponse{CommentData: items, Total: total}
 }
 
 // GetLatestForDetail returns the latest N comments with user info, shaped for

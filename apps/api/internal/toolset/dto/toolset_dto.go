@@ -2,6 +2,7 @@ package dto
 
 import (
 	"encoding/json"
+	"time"
 
 	"kun-galgame-api/internal/toolset/model"
 	"kun-galgame-api/internal/toolset/repository"
@@ -68,19 +69,47 @@ type ToolsetCard struct {
 	ResourceUpdateTime any                 `json:"resource_update_time"`
 }
 
-// ToolsetDetailResponse is the response for GET /toolset/:id.
-// Field names are lifted directly from the pre-refactor handler so the wire
-// format is unchanged.
+// ToolsetResourceItem is the slim resource projection embedded in the toolset
+// detail response. Hides sensitive fields (code/password/note) — those are
+// only served by the dedicated /toolset/:id/resource/detail endpoint.
+type ToolsetResourceItem struct {
+	ID       int    `json:"id"`
+	Type     string `json:"type"`
+	Size     string `json:"size"`
+	Download int    `json:"download"`
+	Status   int    `json:"status"`
+}
+
+// ToolsetDetailResponse is the FLAT response for GET /toolset/:id, shaped to
+// match the frontend `ToolsetDetail` type directly. Previously this was a
+// nested envelope (`{toolset, descriptionHTML, ...}`) which made the
+// frontend look up `data.toolset.created` — but the page reads `data.created`,
+// causing `new Date(undefined).toISOString()` to throw RangeError.
 type ToolsetDetailResponse struct {
-	Toolset         model.GalgameToolset             `json:"toolset"`
-	DescriptionHTML string                           `json:"descriptionHTML"`
-	Aliases         []model.GalgameToolsetAlias      `json:"aliases"`
-	User            userModel.UserBrief              `json:"user"`
-	Practicality    PracticalitySummary              `json:"practicality"`
-	DownloadSum     int64                            `json:"downloadSum"`
-	Comments        []CommentDetailItem              `json:"comments"`
-	Contributors    []repository.ContributorBrief    `json:"contributors"`
-	Resources       []model.GalgameToolsetResource   `json:"resources"`
+	ID                 int                           `json:"id"`
+	Name               string                        `json:"name"`
+	ContentMarkdown    string                        `json:"contentMarkdown"`
+	ContentHTML        string                        `json:"contentHtml"`
+	Type               string                        `json:"type"`
+	Platform           string                        `json:"platform"`
+	Language           string                        `json:"language"`
+	Version            string                        `json:"version"`
+	Homepage           []string                      `json:"homepage"`
+	View               int                           `json:"view"`
+	Download           int64                         `json:"download"`
+	User               userModel.UserBrief           `json:"user"`
+	Aliases            []string                      `json:"aliases"`
+	PracticalityAvg    *float64                      `json:"practicalityAvg"`
+	PracticalityCount  int64                         `json:"practicalityCount"`
+	RatingCounts       map[int]int64                 `json:"ratingCounts"`
+	ResourceUpdateTime time.Time                     `json:"resource_update_time"`
+	Resource           []ToolsetResourceItem         `json:"resource"`
+	Edited             *time.Time                    `json:"edited"`
+	Created            time.Time                     `json:"created"`
+	Updated            time.Time                     `json:"updated"`
+	CommentCount       int64                         `json:"commentCount"`
+	CommentPreview     []CommentDetailItem           `json:"commentPreview"`
+	Contributors       []repository.ContributorBrief `json:"contributors"`
 }
 
 // CreatedToolsetResponse is the raw toolset row returned by POST /toolset.

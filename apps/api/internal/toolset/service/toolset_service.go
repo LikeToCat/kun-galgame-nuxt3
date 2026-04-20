@@ -153,20 +153,70 @@ func (s *ToolsetService) GetDetail(id int) (*dto.ToolsetDetailResponse, *errors.
 
 	practicality := s.practicalitySvc.Summary(id)
 	downloadSum := s.resourceRepo.DownloadSum(id)
+	commentCount := s.commentRepo.CountByToolset(id)
 	comments := s.commentSvc.GetLatestForDetail(id, 5)
 	contributors := s.toolsetRepo.FindContributors(id)
 	resources := s.resourceRepo.FindByToolset(id)
 
+	// homepage is jsonb (RawMessage) on the model; flatten to []string for the
+	// frontend. Tolerate null/garbage by falling back to an empty slice.
+	homepage := []string{}
+	if len(toolset.Homepage) > 0 {
+		_ = json.Unmarshal(toolset.Homepage, &homepage)
+		if homepage == nil {
+			homepage = []string{}
+		}
+	}
+
+	aliasNames := make([]string, len(aliases))
+	for i, a := range aliases {
+		aliasNames[i] = a.Name
+	}
+
+	resourceItems := make([]dto.ToolsetResourceItem, len(resources))
+	for i, r := range resources {
+		resourceItems[i] = dto.ToolsetResourceItem{
+			ID: r.ID, Type: r.Type, Size: r.Size,
+			Download: r.Download, Status: r.Status,
+		}
+	}
+
+	// practicalityAvg is null when no one has rated yet (matches nitro).
+	var avg *float64
+	practicalityCount := int64(0)
+	for _, c := range practicality.Counts {
+		practicalityCount += c
+	}
+	if practicalityCount > 0 {
+		v := practicality.Avg
+		avg = &v
+	}
+
 	return &dto.ToolsetDetailResponse{
-		Toolset:         *toolset,
-		DescriptionHTML: descriptionHTML,
-		Aliases:         aliases,
-		User:            user,
-		Practicality:    *practicality,
-		DownloadSum:     downloadSum,
-		Comments:        comments,
-		Contributors:    contributors,
-		Resources:       resources,
+		ID:                 toolset.ID,
+		Name:               toolset.Name,
+		ContentMarkdown:    toolset.Description,
+		ContentHTML:        descriptionHTML,
+		Type:               toolset.Type,
+		Platform:           toolset.Platform,
+		Language:           toolset.Language,
+		Version:            toolset.Version,
+		Homepage:           homepage,
+		View:               toolset.View,
+		Download:           downloadSum,
+		User:               user,
+		Aliases:            aliasNames,
+		PracticalityAvg:    avg,
+		PracticalityCount:  practicalityCount,
+		RatingCounts:       practicality.Counts,
+		ResourceUpdateTime: toolset.ResourceUpdateTime,
+		Resource:           resourceItems,
+		Edited:             toolset.Edited,
+		Created:            toolset.CreatedAt,
+		Updated:            toolset.UpdatedAt,
+		CommentCount:       commentCount,
+		CommentPreview:     comments,
+		Contributors:       contributors,
 	}, nil
 }
 

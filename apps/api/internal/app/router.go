@@ -167,7 +167,7 @@ func (a *App) setupRoutes() {
 	optAuth.Get("/toolset", a.ToolsetHandler.GetList)
 	optAuth.Get("/toolset/:id", a.ToolsetHandler.GetDetail)
 	optAuth.Get("/toolset/:id/practicality", a.ToolsetPracticalityHandler.GetPracticality)
-	optAuth.Get("/toolset/:id/comment", a.ToolsetCommentHandler.GetComments)
+	optAuth.Get("/toolset/:id/comment/all", a.ToolsetCommentHandler.GetComments)
 
 	// ════════════════════════════════════════════
 	// AUTHENTICATED routes (require valid session)

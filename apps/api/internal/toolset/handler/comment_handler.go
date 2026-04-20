@@ -20,7 +20,10 @@ func NewCommentHandler(commentService *service.CommentService) *CommentHandler {
 }
 
 // GetComments returns paginated comments for a toolset.
-// GET /api/toolset/:id/comment
+// GET /api/toolset/:id/comment/all
+//
+// Response shape: { commentData: ToolsetCommentItem[], total: number } —
+// matches the legacy nitro contract that the frontend Container.vue reads.
 func (h *CommentHandler) GetComments(c *fiber.Ctx) error {
 	id, err := c.ParamsInt("id")
 	if err != nil {
@@ -38,8 +41,8 @@ func (h *CommentHandler) GetComments(c *fiber.Ctx) error {
 		req.Limit = 20
 	}
 
-	items, total := h.commentService.GetComments(id, &req)
-	return response.Paginated(c, items, total)
+	resp := h.commentService.GetComments(id, &req)
+	return response.OK(c, resp)
 }
 
 // CreateComment creates a comment on a toolset.
