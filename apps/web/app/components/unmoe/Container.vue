@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import { kungalgameResponseHandler } from '~/utils/responseHandler'
-
 const pageData = reactive({
   page: 1,
   limit: 30
 })
 
-const { data, status } = await useFetch(`/api/unmoe`, {
+const { data, status } = await useKunFetch(`/unmoe`, {
   method: 'GET',
-  query: pageData,
-  ...kungalgameResponseHandler
+  query: pageData
 })
 </script>
 

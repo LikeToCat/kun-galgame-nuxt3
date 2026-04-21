@@ -46,6 +46,51 @@ type wikiTagDetailResp struct {
 	Total    int64                 `json:"total"`
 }
 
+// wikiMultiTagResp is the {items, total} shape wiki returns for /tag/multi.
+type wikiMultiTagResp struct {
+	Items []dto.WikiGalgameItem `json:"items"`
+	Total int64                 `json:"total"`
+}
+
+// TagMultiPage is the enriched response for GET /galgame-tag/multi.
+type TagMultiPage struct {
+	Galgames []dto.GalgameCard `json:"galgames"`
+	Total    int64             `json:"total"`
+}
+
+// GetByMultiTag — GET /galgame-tag/multi
+//
+// Proxies to the wiki /tag/multi endpoint with param renamed to the
+// snake_case the wiki expects and content_limit forwarded in SFW mode,
+// then enriches the resulting galgames with local like counts etc.
+func (s *TagService) GetByMultiTag(
+	ctx context.Context,
+	rawQuery url.Values,
+	isSFW bool,
+) (*TagMultiPage, *errors.AppError) {
+	q := withSFWFilter(rawQuery, isSFW)
+	// tagIds → tag_ids (wiki uses snake_case)
+	if v := q.Get("tagIds"); v != "" {
+		q.Del("tagIds")
+		q.Set("tag_ids", v)
+	}
+
+	data, appErr := s.wikiClient.Get(ctx, "/tag/multi", q)
+	if appErr != nil {
+		return nil, appErr
+	}
+	var parsed wikiMultiTagResp
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return nil, errors.ErrInternal("解析 Wiki 响应失败")
+	}
+
+	filtered := s.enricher.FilterSFW(parsed.Items, isSFW)
+	return &TagMultiPage{
+		Galgames: s.enricher.ToCards(filtered),
+		Total:    parsed.Total,
+	}, nil
+}
+
 // GetList — GET /galgame-tag
 //
 // In SFW mode we drop tags whose category is "sexual". Because the wiki

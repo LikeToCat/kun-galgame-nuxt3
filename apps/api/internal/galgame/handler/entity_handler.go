@@ -127,6 +127,15 @@ func (h *EntityHandler) GetTagList(c *fiber.Ctx) error {
 	return response.OK(c, page)
 }
 
+// GetMultiTagGalgames — GET /galgame-tag/multi
+func (h *EntityHandler) GetMultiTagGalgames(c *fiber.Ctx) error {
+	page, appErr := h.tagService.GetByMultiTag(c.Context(), collectQuery(c), utils.IsSFW(c))
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+	return response.OK(c, page)
+}
+
 // GetTagDetail — GET /galgame-tag/:name
 func (h *EntityHandler) GetTagDetail(c *fiber.Ctx) error {
 	detail, appErr := h.tagService.GetDetail(
