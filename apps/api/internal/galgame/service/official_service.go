@@ -90,6 +90,42 @@ func (s *OfficialService) GetList(
 }
 
 // ──────────────────────────────────────────
+// Search — GET /galgame-official/search
+// ──────────────────────────────────────────
+//
+// Wiki returns a bare array of officials whose alias field may be missing
+// entirely or populated with {id, name, ...} objects. Normalize both to the
+// OfficialListItem shape the frontend list already uses so the search UI
+// can render the same card component without per-field guards.
+func (s *OfficialService) Search(
+	ctx context.Context,
+	rawQuery url.Values,
+) ([]dto.OfficialListItem, *errors.AppError) {
+	data, appErr := s.wikiClient.Get(ctx, "/official/search", rawQuery)
+	if appErr != nil {
+		return nil, appErr
+	}
+	var raw []wikiOfficialListItem
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, errors.ErrInternal("解析 Wiki 响应失败")
+	}
+
+	items := make([]dto.OfficialListItem, len(raw))
+	for i, o := range raw {
+		items[i] = dto.OfficialListItem{
+			ID:           o.ID,
+			Name:         o.Name,
+			Link:         o.Link,
+			Category:     o.Category,
+			Lang:         o.Lang,
+			Alias:        aliasesToNames(o.Alias),
+			GalgameCount: o.GalgameCount,
+		}
+	}
+	return items, nil
+}
+
+// ──────────────────────────────────────────
 // GetDetail — GET /galgame-official/:name
 // ──────────────────────────────────────────
 

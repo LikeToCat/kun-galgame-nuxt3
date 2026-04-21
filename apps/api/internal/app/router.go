@@ -124,7 +124,7 @@ func (a *App) setupRoutes() {
 	api.Get("/galgame-tag/multi", a.GalgameEntityHandler.GetMultiTagGalgames)
 	api.Get("/galgame-tag/:name", a.GalgameEntityHandler.GetTagDetail)
 	api.Get("/galgame-official", a.GalgameEntityHandler.GetOfficialList)
-	api.Get("/galgame-official/search", a.GalgameWikiHandler.ProxyGet)
+	api.Get("/galgame-official/search", a.GalgameEntityHandler.SearchOfficials)
 	api.Get("/galgame-official/:name", a.GalgameEntityHandler.GetOfficialDetail)
 	api.Get("/galgame-engine", a.GalgameEntityHandler.GetEngineList)
 	api.Get("/galgame-engine/:name", a.GalgameEntityHandler.GetEngineDetail)

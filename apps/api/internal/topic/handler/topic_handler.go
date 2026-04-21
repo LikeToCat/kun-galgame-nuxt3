@@ -260,7 +260,7 @@ func (h *TopicHandler) SetBestAnswer(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	if appErr := h.topicWriteService.SetBestAnswer(c.Context(), user.UID, tid, req.ReplyID); appErr != nil {
+	if appErr := h.topicWriteService.SetBestAnswer(c.Context(), user.UID, user.Role, tid, req.ReplyID); appErr != nil {
 		return response.Error(c, appErr)
 	}
 

@@ -391,18 +391,54 @@ func (s *TopicWriteService) ToggleHide(ctx context.Context, uid, role, topicID i
 	return nil
 }
 
-func (s *TopicWriteService) SetBestAnswer(ctx context.Context, uid, topicID, replyID int) *errors.AppError {
+// SetBestAnswer toggles the best answer for a topic: if the given reply is
+// already the current best answer it is cleared, otherwise it becomes the
+// best answer. The reply author's moemoepoint is adjusted by ±7 to match
+// the legacy Nitro behavior.
+func (s *TopicWriteService) SetBestAnswer(ctx context.Context, uid, role, topicID, replyID int) *errors.AppError {
 	topic, err := s.topicRepo.FindByID(topicID)
 	if err != nil {
 		return errors.ErrNotFound("未找到该话题")
 	}
-	if topic.UserID != uid {
-		return errors.ErrForbidden("只有话题作者可以设置最佳回答")
+	if topic.UserID != uid && role < 2 {
+		return errors.ErrForbidden("只有话题作者或管理员可以设置最佳回答")
 	}
 
-	if err := s.topicRepo.UpdateFields(topicID, map[string]any{
-		"best_answer_id": &replyID,
-	}); err != nil {
+	var reply topicModel.TopicReply
+	if err := s.topicRepo.DB().First(&reply, replyID).Error; err != nil {
+		return errors.ErrNotFound("未找到该回复")
+	}
+	if reply.TopicID != topicID {
+		return errors.ErrBadRequest("该回复不属于此话题")
+	}
+
+	isCurrentBest := topic.BestAnswerID != nil && *topic.BestAnswerID == replyID
+	delta := 7
+	if isCurrentBest {
+		delta = -7
+	}
+
+	txErr := s.topicRepo.DB().Transaction(func(tx *gorm.DB) error {
+		if isCurrentBest {
+			if err := tx.Model(&topicModel.Topic{}).Where("id = ?", topicID).
+				Update("best_answer_id", nil).Error; err != nil {
+				return err
+			}
+		} else {
+			if err := tx.Model(&topicModel.Topic{}).Where("id = ?", topicID).
+				Updates(map[string]any{
+					"best_answer_id":     &replyID,
+					"status_update_time": time.Now(),
+				}).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Exec(
+			`UPDATE "user" SET moemoepoint = moemoepoint + ? WHERE id = ?`,
+			delta, reply.UserID,
+		).Error
+	})
+	if txErr != nil {
 		return errors.ErrInternal("设置最佳回答失败")
 	}
 	return nil

@@ -73,6 +73,15 @@ func (h *EntityHandler) GetOfficialList(c *fiber.Ctx) error {
 	return response.OK(c, page)
 }
 
+// SearchOfficials — GET /galgame-official/search
+func (h *EntityHandler) SearchOfficials(c *fiber.Ctx) error {
+	items, appErr := h.officialService.Search(c.Context(), collectQuery(c))
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+	return response.OK(c, items)
+}
+
 // GetOfficialDetail — GET /galgame-official/:name
 func (h *EntityHandler) GetOfficialDetail(c *fiber.Ctx) error {
 	detail, appErr := h.officialService.GetDetail(
