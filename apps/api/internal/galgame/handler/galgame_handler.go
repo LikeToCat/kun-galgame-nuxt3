@@ -129,7 +129,7 @@ func (h *GalgameHandler) ToggleFavorite(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("无效的 Galgame ID"))
 	}
 
-	if appErr := h.galgameService.ToggleFavorite(user.UID, gid); appErr != nil {
+	if appErr := h.galgameService.ToggleFavorite(c.Context(), user.UID, gid); appErr != nil {
 		return response.Error(c, appErr)
 	}
 	return response.OKMessage(c, "操作成功")

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"kun-galgame-api/internal/constants"
+	"kun-galgame-api/internal/infrastructure/markdown"
 	"kun-galgame-api/internal/middleware"
 	"kun-galgame-api/internal/topic/dto"
 	topicModel "kun-galgame-api/internal/topic/model"
@@ -404,15 +405,50 @@ func (s *ReplyService) PinReply(ctx context.Context, uid, role, topicID, replyID
 		return errors.ErrForbidden("您没有权限置顶回复")
 	}
 
+	reply, err := s.replyRepo.FindByID(replyID)
+	if err != nil {
+		return errors.ErrNotFound("未找到该回复")
+	}
+
+	isPinning := topic.PinnedReplyID == nil || *topic.PinnedReplyID != replyID
 	var newPinned *int
-	if topic.PinnedReplyID != nil && *topic.PinnedReplyID == replyID {
-		newPinned = nil // unpin
-	} else {
+	if isPinning {
 		newPinned = &replyID
 	}
 
-	if err := s.topicRepo.UpdateFields(topicID, map[string]any{"pinned_reply_id": newPinned}); err != nil {
+	txErr := s.replyRepo.DB().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&topicModel.Topic{}).Where("id = ?", topicID).
+			Updates(map[string]any{"pinned_reply_id": newPinned}).Error; err != nil {
+			return err
+		}
+		if isPinning && uid != reply.UserID {
+			s.helpers.CreateTopicMessageWithContent(
+				tx, uid, reply.UserID, "pin-reply",
+				replyPlainPreview(s.replyRepo, *reply),
+				topicID,
+			)
+		}
+		return nil
+	})
+	if txErr != nil {
 		return errors.ErrInternal("操作失败")
 	}
 	return nil
+}
+
+// replyPlainPreview concatenates a reply's own markdown-stripped content with
+// each topic_reply_target.content (markdown-stripped), mirroring the legacy
+// Nitro `reply.content + targets.toString()` pattern used for pin-reply /
+// solution notification previews on multi-target replies.
+func replyPlainPreview(repo *repository.ReplyRepository, reply topicModel.TopicReply) string {
+	var b strings.Builder
+	b.WriteString(markdown.ToPlainText(reply.Content, 500))
+
+	targets, err := repo.FindTargetsByReplyIDs([]int{reply.ID})
+	if err == nil {
+		for _, t := range targets[reply.ID] {
+			b.WriteString(markdown.ToPlainText(t.Content, 500))
+		}
+	}
+	return b.String()
 }

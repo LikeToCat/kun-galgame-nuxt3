@@ -16,6 +16,15 @@ func NewWebsiteRepository(db *gorm.DB) *WebsiteRepository {
 
 func (r *WebsiteRepository) DB() *gorm.DB { return r.db }
 
+// GetURL returns the website's URL slug (used as the link key in the
+// frontend `/website/:url` route). Empty on miss.
+func (r *WebsiteRepository) GetURL(id int) string {
+	var url string
+	r.db.Model(&model.GalgameWebsite{}).Where("id = ?", id).
+		Select("url").Scan(&url)
+	return url
+}
+
 // ──────────────────────────────────────────
 // Row projections
 // ──────────────────────────────────────────

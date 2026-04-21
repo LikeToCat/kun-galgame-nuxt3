@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"kun-galgame-api/internal/constants"
+	msgService "kun-galgame-api/internal/message/service"
 	"kun-galgame-api/internal/topic/dto"
 	topicModel "kun-galgame-api/internal/topic/model"
 	"kun-galgame-api/internal/topic/repository"
@@ -17,19 +18,25 @@ import (
 type TopicWriteService struct {
 	topicRepo    *repository.TopicRepository
 	taxonomyRepo *repository.TopicTaxonomyRepository
+	replyRepo    *repository.ReplyRepository
 	rdb          *redis.Client
+	notifier     msgService.Notifier
 	helpers      InteractionHelpers
 }
 
 func NewTopicWriteService(
 	topicRepo *repository.TopicRepository,
 	taxonomyRepo *repository.TopicTaxonomyRepository,
+	replyRepo *repository.ReplyRepository,
 	rdb *redis.Client,
+	notifier msgService.Notifier,
 ) *TopicWriteService {
 	return &TopicWriteService{
 		topicRepo:    topicRepo,
 		taxonomyRepo: taxonomyRepo,
+		replyRepo:    replyRepo,
 		rdb:          rdb,
+		notifier:     notifier,
 	}
 }
 
@@ -433,10 +440,23 @@ func (s *TopicWriteService) SetBestAnswer(ctx context.Context, uid, role, topicI
 				return err
 			}
 		}
-		return tx.Exec(
+		if err := tx.Exec(
 			`UPDATE "user" SET moemoepoint = moemoepoint + ? WHERE id = ?`,
 			delta, reply.UserID,
-		).Error
+		).Error; err != nil {
+			return err
+		}
+		// Only notify on set (not on clear) — matches legacy Nitro.
+		if !isCurrentBest {
+			return s.notifier.Emit(tx, msgService.Spec{
+				SenderID:   uid,
+				ReceiverID: reply.UserID,
+				Kind:       msgService.NotifySolution,
+				Content:    replyPlainPreview(s.replyRepo, reply),
+				TopicID:    topicID,
+			})
+		}
+		return nil
 	})
 	if txErr != nil {
 		return errors.ErrInternal("设置最佳回答失败")

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"kun-galgame-api/internal/infrastructure/markdown"
+	msgService "kun-galgame-api/internal/message/service"
 	"kun-galgame-api/internal/website/dto"
 	"kun-galgame-api/internal/website/model"
 	"kun-galgame-api/internal/website/repository"
@@ -10,13 +12,19 @@ import (
 type CommentService struct {
 	commentRepo *repository.CommentRepository
 	websiteRepo *repository.WebsiteRepository
+	notifier    msgService.Notifier
 }
 
 func NewCommentService(
 	commentRepo *repository.CommentRepository,
 	websiteRepo *repository.WebsiteRepository,
+	notifier msgService.Notifier,
 ) *CommentService {
-	return &CommentService{commentRepo: commentRepo, websiteRepo: websiteRepo}
+	return &CommentService{
+		commentRepo: commentRepo,
+		websiteRepo: websiteRepo,
+		notifier:    notifier,
+	}
 }
 
 // ──────────────────────────────────────────
@@ -85,6 +93,22 @@ func (s *CommentService) CreateComment(
 	}
 
 	s.websiteRepo.AdjustCommentCount(req.WebsiteID, 1)
+
+	// Notify the parent-comment author (nitro legacy: only when replying
+	// to an existing comment, using the website.url slug as the link key).
+	if req.ParentID != nil {
+		if parent, err := s.commentRepo.FindByID(*req.ParentID); err == nil {
+			url := s.websiteRepo.GetURL(req.WebsiteID)
+			_ = s.notifier.Emit(nil, msgService.Spec{
+				SenderID:   userID,
+				ReceiverID: parent.UserID,
+				Kind:       msgService.NotifyCommented,
+				Content:    markdown.ToPlainText(req.Content, 233),
+				WebsiteURL: url,
+			})
+		}
+	}
+
 	return &comment, nil
 }
 

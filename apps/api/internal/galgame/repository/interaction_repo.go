@@ -51,7 +51,8 @@ func (r *GalgameInteractionRepository) ToggleLike(tx *gorm.DB, userID, galgameID
 }
 
 // ToggleFavorite inserts/removes a favorite row atomically within a caller tx.
-func (r *GalgameInteractionRepository) ToggleFavorite(tx *gorm.DB, userID, galgameID int) {
+// Returns whether the result is "now favorited".
+func (r *GalgameInteractionRepository) ToggleFavorite(tx *gorm.DB, userID, galgameID int) (favorited bool) {
 	var existing model.GalgameFavorite
 	result := tx.Where("user_id = ? AND galgame_id = ?", userID, galgameID).First(&existing)
 
@@ -59,10 +60,11 @@ func (r *GalgameInteractionRepository) ToggleFavorite(tx *gorm.DB, userID, galga
 		tx.Create(&model.GalgameFavorite{UserID: userID, GalgameID: galgameID})
 		tx.Model(&model.GalgameLocal{}).Where("id = ?", galgameID).
 			Update("favorite_count", gorm.Expr("favorite_count + 1"))
-		return
+		return true
 	}
 
 	tx.Delete(&existing)
 	tx.Model(&model.GalgameLocal{}).Where("id = ?", galgameID).
 		Update("favorite_count", gorm.Expr("favorite_count - 1"))
+	return false
 }

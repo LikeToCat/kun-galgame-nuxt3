@@ -14,6 +14,7 @@ import (
 
 type CommentService struct {
 	commentRepo *repository.CommentRepository
+	helpers     InteractionHelpers
 }
 
 func NewCommentService(commentRepo *repository.CommentRepository) *CommentService {
@@ -170,6 +171,11 @@ func (s *CommentService) ToggleCommentLike(uid, commentID int) *errors.AppError 
 			if comment.UserID != uid {
 				tx.Model(&userModel.User{}).Where("id = ?", comment.UserID).
 					Update("moemoepoint", gorm.Expr("moemoepoint + 1"))
+				s.helpers.CreateGalgameMessageWithContent(
+					tx, uid, comment.UserID, "liked",
+					truncate(comment.Content, 233),
+					comment.GalgameID,
+				)
 			}
 		} else {
 			tx.Delete(&existing)

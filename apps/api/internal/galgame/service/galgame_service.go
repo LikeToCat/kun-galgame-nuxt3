@@ -141,10 +141,24 @@ func (s *GalgameService) ToggleLike(
 	return nil
 }
 
-// ToggleFavorite flips favorite state (no moemoepoint or message side effects).
-func (s *GalgameService) ToggleFavorite(userID, galgameID int) *errors.AppError {
+// ToggleFavorite flips favorite state and (on +1 direction) rewards the
+// galgame owner by +1 moemoe and sends a `favorite` notification — matching
+// legacy Nitro behavior. Owner id is resolved via wiki; if the lookup fails
+// we still flip the flag but skip moemoe / notification.
+func (s *GalgameService) ToggleFavorite(ctx context.Context, userID, galgameID int) *errors.AppError {
+	ownerID := s.fetchOwnerID(ctx, galgameID)
+
 	s.galgameRepo.DB().Transaction(func(tx *gorm.DB) error {
-		s.interactionRepo.ToggleFavorite(tx, userID, galgameID)
+		favorited := s.interactionRepo.ToggleFavorite(tx, userID, galgameID)
+		if ownerID == 0 || ownerID == userID {
+			return nil
+		}
+		if favorited {
+			s.helpers.AdjustMoemoepoint(tx, ownerID, 1)
+			s.helpers.CreateGalgameMessage(tx, userID, ownerID, "favorite", galgameID)
+		} else {
+			s.helpers.AdjustMoemoepoint(tx, ownerID, -1)
+		}
 		return nil
 	})
 	return nil

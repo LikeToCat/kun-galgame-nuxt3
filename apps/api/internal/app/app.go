@@ -149,6 +149,7 @@ func New(cfg *config.Config) *App {
 	userContentService := service.NewUserContentService(userContentRepo, userBriefRepo, gc)
 	messageSvc := msgService.NewMessageService(messageRepository)
 	chatSvc := msgService.NewChatService(chatRepository)
+	notifier := msgService.NewNotifier(messageRepository)
 
 	// Topic
 	topicRepository := topicRepo.NewTopicRepository(db)
@@ -158,7 +159,7 @@ func New(cfg *config.Config) *App {
 	topicCommentRepo := topicRepo.NewCommentRepository(db)
 	pollRepository := topicRepo.NewPollRepository(db)
 	topicSvc := topicService.NewTopicService(topicRepository, topicListRepo, topicTaxonomyRepo, rdb)
-	topicWriteSvc := topicService.NewTopicWriteService(topicRepository, topicTaxonomyRepo, rdb)
+	topicWriteSvc := topicService.NewTopicWriteService(topicRepository, topicTaxonomyRepo, replyRepository, rdb, notifier)
 	replySvc := topicService.NewReplyService(replyRepository, topicCommentRepo, topicRepository, rdb)
 	commentSvc := topicService.NewCommentService(replyRepository, topicCommentRepo, rdb)
 	pollSvc := topicService.NewPollService(pollRepository, topicRepository, rdb)
@@ -194,7 +195,7 @@ func New(cfg *config.Config) *App {
 	websiteCoreSvc := websiteService.NewWebsiteService(
 		websiteRepository, websiteCategoryRepo, websiteTagRepo, websiteCommentRepo,
 	)
-	websiteCommentSvc := websiteService.NewCommentService(websiteCommentRepo, websiteRepository)
+	websiteCommentSvc := websiteService.NewCommentService(websiteCommentRepo, websiteRepository, notifier)
 	websiteCategorySvc := websiteService.NewCategoryService(websiteCategoryRepo, websiteRepository, websiteTagRepo)
 	websiteTagSvc := websiteService.NewTagService(websiteTagRepo, websiteRepository, websiteCategoryRepo)
 
