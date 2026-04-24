@@ -36,7 +36,7 @@ func (s *MessageService) GetMessages(
 			ReceiverUID: r.ReceiverID,
 			Link:        r.Link,
 			Content:     r.Content,
-			Status:      "read",
+			Status:      r.Status,
 			Type:        r.Type,
 		}
 	}
@@ -68,7 +68,7 @@ func (s *MessageService) GetSystemMessages(ctx context.Context) ([]dto.SystemMes
 	for i, r := range rows {
 		messages[i] = dto.SystemMessageResponse{
 			ID:     r.ID,
-			Status: "read",
+			Status: r.Status,
 			Content: map[string]string{
 				"en-us": r.ContentEnUS,
 				"ja-jp": r.ContentJaJP,
