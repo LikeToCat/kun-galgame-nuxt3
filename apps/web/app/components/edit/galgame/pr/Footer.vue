@@ -45,7 +45,7 @@ const handlePublishGalgamePR = async () => {
     isPublishing.value = true
   }
 
-  const response = await kunFetch(`/galgame/${galgame.id}/pr`, {
+  const response = await kunFetch(`/galgame/${galgame.id}/prs`, {
     method: 'POST',
     body: data
   })

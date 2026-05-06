@@ -216,6 +216,7 @@ func (a *App) setupRoutes() {
 	authed.Get("/message/nav/contact", a.MessageChatHandler.GetNavContact)
 	authed.Get("/message/chat/history", a.MessageChatHandler.GetChatHistory)
 	authed.Post("/message/chat/send", a.MessageChatHandler.SendChatMessage)
+	authed.Post("/message/chat/recall", a.MessageChatHandler.RecallChatMessage)
 
 	// Image upload (authenticated)
 	authed.Post("/image/topic", a.ImageHandler.UploadTopicImage)

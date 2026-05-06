@@ -34,10 +34,10 @@ const handleDeclineRequest = async () => {
 
   isFetching.value = true
   const result = await kunFetch(
-    `/galgame/${props.details.galgameId}/pr/decline`,
+    `/galgame/${props.details.galgameId}/prs/${props.details.id}/decline`,
     {
       method: 'PUT',
-      body: { galgamePrId: props.details.id, note: declineInput.value.trim() }
+      body: { note: declineInput.value.trim() }
     }
   )
   isFetching.value = false
@@ -59,11 +59,8 @@ const handleMergeRequest = async () => {
 
   isFetching.value = true
   const result = await kunFetch(
-    `/galgame/${props.details.galgameId}/pr/merge`,
-    {
-      method: 'PUT',
-      body: { galgamePrId: props.details.id }
-    }
+    `/galgame/${props.details.galgameId}/prs/${props.details.id}/merge`,
+    { method: 'PUT' }
   )
   isFetching.value = false
 

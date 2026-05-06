@@ -17,6 +17,11 @@ type SendChatMessageRequest struct {
 	Content     string `json:"content" validate:"required,min=1,max=1007"`
 }
 
+// RecallChatMessageRequest is the body for POST /api/message/chat/recall.
+type RecallChatMessageRequest struct {
+	MessageID int `json:"messageId" validate:"required,min=1"`
+}
+
 // ──────────────────────────────────────────
 // Responses
 // ──────────────────────────────────────────

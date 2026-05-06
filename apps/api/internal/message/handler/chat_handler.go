@@ -4,6 +4,7 @@ import (
 	"kun-galgame-api/internal/message/dto"
 	"kun-galgame-api/internal/message/service"
 	"kun-galgame-api/internal/middleware"
+	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
 	"kun-galgame-api/pkg/utils"
 
@@ -70,4 +71,26 @@ func (h *ChatHandler) SendChatMessage(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 	return response.OKMessage(c, "发送成功")
+}
+
+// RecallChatMessage marks a sent chat message as recalled (sender-only).
+// POST /api/message/chat/recall
+func (h *ChatHandler) RecallChatMessage(c *fiber.Ctx) error {
+	user, appErr := middleware.MustGetUser(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+
+	var req dto.RecallChatMessageRequest
+	if appErr := utils.ParseAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
+	}
+	if req.MessageID <= 0 {
+		return response.Error(c, errors.ErrBadRequest("无效的消息 ID"))
+	}
+
+	if appErr := h.chatService.RecallMessage(c.Context(), user.UID, req.MessageID); appErr != nil {
+		return response.Error(c, appErr)
+	}
+	return response.OKMessage(c, "撤回成功")
 }

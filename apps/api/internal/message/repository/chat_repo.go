@@ -182,6 +182,54 @@ func (r *ChatRepository) FindMessagesByRoom(roomID int, roomName string, page, l
 	return rows
 }
 
+// MessageHeader is the slim projection used to validate a recall request:
+// who sent the message, in what room, and whether it's already recalled.
+type MessageHeader struct {
+	ID           int
+	ChatRoomID   int   `gorm:"column:chat_room_id"`
+	ChatroomName string `gorm:"column:chatroom_name"`
+	SenderID     int   `gorm:"column:sender_id"`
+	SenderName   string `gorm:"column:sender_name"`
+	IsRecall     bool  `gorm:"column:is_recall"`
+}
+
+// FindMessageHeader loads the header projection for a chat message.
+// Returns false on miss; caller maps to ErrNotFound.
+func (r *ChatRepository) FindMessageHeader(id int) (MessageHeader, bool) {
+	var h MessageHeader
+	err := r.db.Table("chat_message m").
+		Select(`m.id, m.chat_room_id, m.chatroom_name, m.sender_id, m.is_recall,
+			u.name AS sender_name`).
+		Joins(`LEFT JOIN "user" u ON u.id = m.sender_id`).
+		Where("m.id = ?", id).
+		Scan(&h).Error
+	if err != nil || h.ID == 0 {
+		return MessageHeader{}, false
+	}
+	return h, true
+}
+
+// MarkMessageRecalled flips is_recall + sets recall_time on a chat message
+// row. Caller is responsible for ownership / time-window checks.
+func (r *ChatRepository) MarkMessageRecalled(id int, now time.Time) error {
+	return r.db.Exec(
+		`UPDATE chat_message SET is_recall = TRUE, recall_time = ?, updated = ? WHERE id = ?`,
+		now, now, id,
+	).Error
+}
+
+// IsLatestMessageInRoom reports whether the given message is the most
+// recent message in its room, used to decide whether to refresh
+// chat_room.last_message_content with the recall-preview text.
+func (r *ChatRepository) IsLatestMessageInRoom(roomID, msgID int) bool {
+	var latest int
+	r.db.Table("chat_message").
+		Select("MAX(id)").
+		Where("chat_room_id = ?", roomID).
+		Scan(&latest)
+	return latest == msgID
+}
+
 // MarkMessagesRead inserts (chat_message_id, user_id) rows into
 // chat_message_read_by, ignoring duplicates. A no-op if msgIDs is empty.
 func (r *ChatRepository) MarkMessagesRead(msgIDs []int, uid int) {

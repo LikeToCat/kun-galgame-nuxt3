@@ -26,10 +26,10 @@ const handleGetDetails = async (galgamePrId: number) => {
     return
   }
   isFetching.value = true
-  const result = await kunFetch(`/galgame/${props.galgameId}/pr`, {
-    method: 'GET',
-    query: { galgamePrId }
-  })
+  const result = await kunFetch(
+    `/galgame/${props.galgameId}/prs/${galgamePrId}`,
+    { method: 'GET' }
+  )
   isFetching.value = false
 
   if (result) {

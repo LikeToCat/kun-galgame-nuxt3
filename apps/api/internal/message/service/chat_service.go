@@ -165,6 +165,45 @@ func (s *ChatService) SendChatMessage(
 }
 
 // ──────────────────────────────────────────
+// RecallMessage — POST /api/message/chat/recall
+// ──────────────────────────────────────────
+
+// RecallMessage marks a chat message as recalled. Only the original sender
+// may recall, and only if it hasn't been recalled already. When the recalled
+// message was the room's latest, the room's last_message preview is also
+// refreshed to "<sender>撤回了一条消息" so contact-list rendering matches the
+// chat history view.
+func (s *ChatService) RecallMessage(
+	ctx context.Context,
+	uid int,
+	messageID int,
+) *errors.AppError {
+	header, ok := s.chatRepo.FindMessageHeader(messageID)
+	if !ok {
+		return errors.ErrNotFound("消息不存在或已被删除")
+	}
+	if header.SenderID != uid {
+		return errors.ErrForbidden("您只能撤回自己发送的消息")
+	}
+	if header.IsRecall {
+		return errors.ErrBadRequest("该消息已被撤回")
+	}
+
+	now := time.Now()
+	if err := s.chatRepo.MarkMessageRecalled(messageID, now); err != nil {
+		return errors.ErrInternal("撤回消息失败")
+	}
+
+	// Only refresh the room preview if this WAS the latest message —
+	// otherwise the preview should keep showing whatever's actually latest.
+	if s.chatRepo.IsLatestMessageInRoom(header.ChatRoomID, messageID) {
+		preview := fmt.Sprintf("%s撤回了一条消息", header.SenderName)
+		s.chatRepo.UpdateRoomLastMessage(header.ChatRoomID, preview, uid, header.SenderName, now)
+	}
+	return nil
+}
+
+// ──────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────
 
