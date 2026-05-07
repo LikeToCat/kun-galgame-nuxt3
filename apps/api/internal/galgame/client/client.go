@@ -49,35 +49,60 @@ func (c *GalgameClient) Get(ctx context.Context, path string, query url.Values) 
 }
 
 // PostWithToken performs a POST with Bearer token.
-func (c *GalgameClient) PostWithToken(ctx context.Context, path, token string, body any) (json.RawMessage, *errors.AppError) {
-	return c.mutateWithToken(ctx, "POST", path, token, body)
+//
+// contentType controls how body is forwarded:
+//   - "" (empty)        → defaults to "application/json"; struct/map bodies
+//                         are JSON-marshaled
+//   - "application/json" → same as empty
+//   - any multipart/* / form-encoded / etc. → body MUST be passed as
+//                                              []byte / json.RawMessage,
+//                                              forwarded byte-for-byte
+//                                              with the boundary preserved
+func (c *GalgameClient) PostWithToken(ctx context.Context, path, token string, body any, contentType string) (json.RawMessage, *errors.AppError) {
+	return c.mutateWithToken(ctx, "POST", path, token, body, contentType)
 }
 
-// PutWithToken performs a PUT with Bearer token.
-func (c *GalgameClient) PutWithToken(ctx context.Context, path, token string, body any) (json.RawMessage, *errors.AppError) {
-	return c.mutateWithToken(ctx, "PUT", path, token, body)
+// PutWithToken performs a PUT with Bearer token. See PostWithToken for
+// contentType semantics.
+func (c *GalgameClient) PutWithToken(ctx context.Context, path, token string, body any, contentType string) (json.RawMessage, *errors.AppError) {
+	return c.mutateWithToken(ctx, "PUT", path, token, body, contentType)
 }
 
-// DeleteWithToken performs a DELETE with Bearer token.
-func (c *GalgameClient) DeleteWithToken(ctx context.Context, path, token string, body any) (json.RawMessage, *errors.AppError) {
-	return c.mutateWithToken(ctx, "DELETE", path, token, body)
+// DeleteWithToken performs a DELETE with Bearer token. See PostWithToken
+// for contentType semantics.
+func (c *GalgameClient) DeleteWithToken(ctx context.Context, path, token string, body any, contentType string) (json.RawMessage, *errors.AppError) {
+	return c.mutateWithToken(ctx, "DELETE", path, token, body, contentType)
 }
 
-func (c *GalgameClient) mutateWithToken(ctx context.Context, method, path, token string, body any) (json.RawMessage, *errors.AppError) {
+func (c *GalgameClient) mutateWithToken(ctx context.Context, method, path, token string, body any, contentType string) (json.RawMessage, *errors.AppError) {
+	if contentType == "" {
+		contentType = "application/json"
+	}
+
 	var bodyReader io.Reader
 	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return nil, errors.ErrInternal("序列化请求失败")
+		// Pass-through for already-encoded bodies (multipart, form-urlencoded,
+		// etc.). Without this, json.Marshal would wrap raw bytes in quotes
+		// and lose the multipart boundary.
+		switch v := body.(type) {
+		case []byte:
+			bodyReader = bytes.NewReader(v)
+		case json.RawMessage:
+			bodyReader = bytes.NewReader([]byte(v))
+		default:
+			b, err := json.Marshal(body)
+			if err != nil {
+				return nil, errors.ErrInternal("序列化请求失败")
+			}
+			bodyReader = bytes.NewReader(b)
 		}
-		bodyReader = bytes.NewReader(b)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
 	if err != nil {
 		return nil, errors.ErrInternal("创建请求失败")
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

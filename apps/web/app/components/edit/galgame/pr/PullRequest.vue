@@ -43,6 +43,8 @@ const { galgamePR } = storeToRefs(useTempGalgamePRStore())
 
         <EditGalgameContentLimit type="rewrite" />
 
+        <EditGalgameBanner />
+
         <EditGalgamePrFooter />
       </KunCard>
     </ClientOnly>

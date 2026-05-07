@@ -45,13 +45,31 @@ const handlePublishGalgamePR = async () => {
     isPublishing.value = true
   }
 
-  const response = await kunFetch(`/galgame/${galgame.id}/prs`, {
-    method: 'POST',
-    body: data
-  })
+  // 可选 banner：用户在 PR 页改了 banner 就一并提交，没改则只发 JSON 字段。
+  // multipart 约定见 docs/galgame_wiki/api-reference.md "Banner 上传"。
+  const banner = await getImage('kun-galgame-publish-banner')
+
+  let response: unknown
+  if (banner instanceof Blob) {
+    const formData = new FormData()
+    formData.append('data', JSON.stringify(data))
+    formData.append('file', banner)
+    response = await kunFetch(`/galgame/${galgame.id}/prs`, {
+      method: 'POST',
+      body: formData
+    })
+  } else {
+    response = await kunFetch(`/galgame/${galgame.id}/prs`, {
+      method: 'POST',
+      body: data
+    })
+  }
   isPublishing.value = false
 
   if (response) {
+    if (banner instanceof Blob) {
+      await deleteImage('kun-galgame-publish-banner')
+    }
     useKunLoliInfo('创建更新请求成功', 5)
     await navigateTo(`/galgame/${galgame.id}`, {
       replace: true

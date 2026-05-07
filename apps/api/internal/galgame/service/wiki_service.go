@@ -40,21 +40,26 @@ func (s *WikiService) ProxyGet(
 }
 
 // ProxyWrite forwards a write request (POST/PUT/DELETE) with OAuth token.
+//
+// contentType is the original Content-Type from the gateway request — kept
+// verbatim so multipart boundaries / form-encoded payloads survive the hop.
+// Empty defaults to application/json (what the wiki expects on JSON bodies).
 func (s *WikiService) ProxyWrite(
 	ctx context.Context,
 	method, gatewayPath, token string,
 	body []byte,
+	contentType string,
 ) (json.RawMessage, *errors.AppError) {
 	wikiPath := client.ToWikiPath(gatewayPath)
 	payload := json.RawMessage(body)
 
 	switch method {
 	case "POST":
-		return s.wikiClient.PostWithToken(ctx, wikiPath, token, payload)
+		return s.wikiClient.PostWithToken(ctx, wikiPath, token, payload, contentType)
 	case "PUT":
-		return s.wikiClient.PutWithToken(ctx, wikiPath, token, payload)
+		return s.wikiClient.PutWithToken(ctx, wikiPath, token, payload, contentType)
 	case "DELETE":
-		return s.wikiClient.DeleteWithToken(ctx, wikiPath, token, payload)
+		return s.wikiClient.DeleteWithToken(ctx, wikiPath, token, payload, contentType)
 	default:
 		return nil, errors.ErrBadRequest("不支持的方法")
 	}

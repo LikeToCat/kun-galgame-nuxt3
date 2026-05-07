@@ -58,8 +58,9 @@ func (s *GalgameService) Create(
 	userID int,
 	token string,
 	body []byte,
+	contentType string,
 ) (json.RawMessage, *errors.AppError) {
-	data, appErr := s.wikiClient.PostWithToken(ctx, "/galgame", token, json.RawMessage(body))
+	data, appErr := s.wikiClient.PostWithToken(ctx, "/galgame", token, json.RawMessage(body), contentType)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -95,7 +96,7 @@ func (s *GalgameService) MergePR(
 	_ = json.Unmarshal(prData, &prInfo)
 
 	data, appErr := s.wikiClient.PutWithToken(
-		ctx, fmt.Sprintf("/galgame/%s/prs/%s/merge", gid, prID), token, nil,
+		ctx, fmt.Sprintf("/galgame/%s/prs/%s/merge", gid, prID), token, nil, "",
 	)
 	if appErr != nil {
 		return nil, appErr

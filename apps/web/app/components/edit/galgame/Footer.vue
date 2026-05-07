@@ -47,16 +47,14 @@ const handlePublishGalgame = async () => {
     useMessage(10525, 'info', 7777)
   }
 
+  // Wiki 新约定 (docs/galgame_wiki/api-reference.md "Banner 上传"):
+  //   data: 整个 JSON 串
+  //   file: 可选图片二进制
+  const { banner: _bannerBlob, ...jsonFields } = data
   const formData = new FormData()
-  for (const key in data) {
-    const value = data[key]
-    if (value !== null && value !== undefined) {
-      if (value instanceof Blob) {
-        formData.append(key, value)
-      } else {
-        formData.append(key, String(value))
-      }
-    }
+  formData.append('data', JSON.stringify(jsonFields))
+  if (banner instanceof Blob) {
+    formData.append('file', banner)
   }
   const gid = await kunFetch('/galgame', {
     method: 'POST',

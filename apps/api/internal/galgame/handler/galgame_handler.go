@@ -39,7 +39,7 @@ func (h *GalgameHandler) Create(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("缺少 OAuth 访问令牌"))
 	}
 
-	data, appErr := h.galgameService.Create(c.Context(), user.UID, token, c.Body())
+	data, appErr := h.galgameService.Create(c.Context(), user.UID, token, c.Body(), c.Get("Content-Type"))
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
