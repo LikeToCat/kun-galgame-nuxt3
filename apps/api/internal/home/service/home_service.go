@@ -7,6 +7,7 @@ import (
 	galgameClient "kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/internal/home/dto"
 	"kun-galgame-api/internal/home/repository"
+	"kun-galgame-api/pkg/userclient"
 )
 
 const (
@@ -20,15 +21,17 @@ const (
 )
 
 type HomeService struct {
-	repo   *repository.HomeRepository
-	wikiGC *galgameClient.GalgameClient
+	repo       *repository.HomeRepository
+	wikiGC     *galgameClient.GalgameClient
+	userClient *userclient.Client
 }
 
 func NewHomeService(
 	repo *repository.HomeRepository,
 	gc *galgameClient.GalgameClient,
+	userClient *userclient.Client,
 ) *HomeService {
-	return &HomeService{repo: repo, wikiGC: gc}
+	return &HomeService{repo: repo, wikiGC: gc, userClient: userClient}
 }
 
 // GetHome returns homepage data: galgames + topics.
@@ -43,7 +46,7 @@ func (s *HomeService) GetHome(ctx context.Context, isSFW bool) (*dto.HomeRespons
 		slog.Warn("首页 galgame 获取失败, 降级为空列表", "error", err)
 		galgames = []dto.HomeGalgame{}
 	}
-	topics, err := s.getHomeTopics(isSFW)
+	topics, err := s.getHomeTopics(ctx, isSFW)
 	if err != nil {
 		return nil, err
 	}
@@ -72,16 +75,12 @@ func (s *HomeService) getHomeGalgames(ctx context.Context, isSFW bool) ([]dto.Ho
 		return nil, appErr
 	}
 
-	// Step 3: Batch fetch users
+	// Step 3: Batch fetch users from OAuth
 	userIDs := make([]int, 0, len(briefMap))
 	for _, b := range briefMap {
 		userIDs = append(userIDs, b.UserID)
 	}
-	users := s.repo.FindUsersByIDs(userIDs)
-	userMap := make(map[int]repository.UserInfoRow, len(users))
-	for _, u := range users {
-		userMap[u.ID] = u
-	}
+	userMap := s.userClient.Hydrate(ctx, userIDs)
 
 	// Step 4: Batch fetch platforms/languages from local galgame_resource
 	resources := s.repo.FindResourcePlatformLanguage(galgameIDs)
@@ -132,7 +131,7 @@ func (s *HomeService) getHomeGalgames(ctx context.Context, isSFW bool) ([]dto.Ho
 	return result, nil
 }
 
-func (s *HomeService) getHomeTopics(isSFW bool) ([]dto.HomeTopic, error) {
+func (s *HomeService) getHomeTopics(ctx context.Context, isSFW bool) ([]dto.HomeTopic, error) {
 	rows, err := s.repo.FindHomeTopics(homeTopicLimit, isSFW)
 	if err != nil {
 		return nil, err
@@ -155,8 +154,15 @@ func (s *HomeService) getHomeTopics(isSFW bool) ([]dto.HomeTopic, error) {
 		tagMap[t.TopicID] = append(tagMap[t.TopicID], t.TagName)
 	}
 
-	result := make([]dto.HomeTopic, len(rows))
-	for i, r := range rows {
+	uids := userclient.CollectIDs(rows, func(r repository.TopicRow) int { return r.UserID })
+	userMap := s.userClient.Hydrate(ctx, uids)
+
+	result := make([]dto.HomeTopic, 0, len(rows))
+	for _, r := range rows {
+		u := userMap[r.UserID]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
 		topicTags := tagMap[r.ID]
 		if topicTags == nil {
 			topicTags = []string{}
@@ -166,7 +172,7 @@ func (s *HomeService) getHomeTopics(isSFW bool) ([]dto.HomeTopic, error) {
 			topicSections = []string{}
 		}
 
-		result[i] = dto.HomeTopic{
+		result = append(result, dto.HomeTopic{
 			ID:               r.ID,
 			Title:            r.Title,
 			View:             r.View,
@@ -178,11 +184,11 @@ func (s *HomeService) getHomeTopics(isSFW bool) ([]dto.HomeTopic, error) {
 			IsNSFWTopic:      r.IsNSFW,
 			Section:          topicSections,
 			Tag:              topicTags,
-			User:             dto.UserBrief{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
+			User:             dto.UserBrief{ID: u.ID, Name: u.Name, Avatar: u.Avatar},
 			Status:           r.Status,
 			UpvoteTime:       r.UpvoteTime,
 			StatusUpdateTime: r.StatusUpdateTime,
-		}
+		})
 	}
 
 	return result, nil

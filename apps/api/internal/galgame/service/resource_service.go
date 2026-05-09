@@ -9,6 +9,7 @@ import (
 	"kun-galgame-api/internal/galgame/model"
 	"kun-galgame-api/internal/galgame/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 	"kun-galgame-api/pkg/utils"
 
 	"gorm.io/gorm"
@@ -17,14 +18,16 @@ import (
 type ResourceService struct {
 	resourceRepo *repository.ResourceRepository
 	wikiClient   *client.GalgameClient
+	userClient   *userclient.Client
 	helpers      InteractionHelpers
 }
 
 func NewResourceService(
 	resourceRepo *repository.ResourceRepository,
 	wikiClient *client.GalgameClient,
+	userClient *userclient.Client,
 ) *ResourceService {
-	return &ResourceService{resourceRepo: resourceRepo, wikiClient: wikiClient}
+	return &ResourceService{resourceRepo: resourceRepo, wikiClient: wikiClient, userClient: userClient}
 }
 
 // ──────────────────────────────────────────
@@ -40,11 +43,15 @@ func (s *ResourceService) GetResourceList(
 
 	galgameIDs, userIDs := collectIDs(rows)
 	briefMap := s.fetchWikiBriefs(ctx, galgameIDs)
-	userMap := s.resourceRepo.FindUsersByIDs(userIDs)
+	userMap := s.userClient.Hydrate(ctx, userIDs)
 
 	cards := make([]dto.ResourceCard, 0, len(rows))
 	for _, r := range rows {
-		card := rowToCard(r, userMap[r.UserID])
+		u := userMap[r.UserID]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
+		card := rowToCard(r, u)
 		if b, ok := briefMap[r.GalgameID]; ok {
 			card.GalgameName = briefToName(b)
 		}
@@ -80,8 +87,7 @@ func (s *ResourceService) GetResourceDetail(
 	links := s.resourceRepo.FindLinks(resourceID)
 	isLiked := s.resourceRepo.IsLikedBy(resourceID, currentUserID)
 
-	userMap := s.resourceRepo.FindUsersByIDs([]int{row.UserID})
-	ownerUser := userMap[row.UserID]
+	ownerUser, _, _ := s.userClient.User(ctx, row.UserID)
 
 	resource := rowToDownloadDetail(row, links, isLiked, ownerUser)
 
@@ -105,6 +111,7 @@ func (s *ResourceService) GetResourceDetail(
 // ──────────────────────────────────────────
 
 func (s *ResourceService) GetResourceDownloadDetail(
+	ctx context.Context,
 	resourceID, currentUserID int,
 ) (*dto.ResourceDownloadDetail, *errors.AppError) {
 	row, ok := s.resourceRepo.FindByID(resourceID)
@@ -117,9 +124,9 @@ func (s *ResourceService) GetResourceDownloadDetail(
 
 	links := s.resourceRepo.FindLinks(resourceID)
 	isLiked := s.resourceRepo.IsLikedBy(resourceID, currentUserID)
-	userMap := s.resourceRepo.FindUsersByIDs([]int{row.UserID})
+	owner, _, _ := s.userClient.User(ctx, row.UserID)
 
-	detail := rowToDownloadDetail(row, links, isLiked, userMap[row.UserID])
+	detail := rowToDownloadDetail(row, links, isLiked, owner)
 	return &detail, nil
 }
 
@@ -128,6 +135,7 @@ func (s *ResourceService) GetResourceDownloadDetail(
 // ──────────────────────────────────────────
 
 func (s *ResourceService) GetGalgameResources(
+	ctx context.Context,
 	req *dto.GalgameResourcesRequest,
 ) ([]dto.ResourceCard, *errors.AppError) {
 	rows := s.resourceRepo.FindByGalgameID(req.GalgameID)
@@ -136,11 +144,15 @@ func (s *ResourceService) GetGalgameResources(
 	for i, r := range rows {
 		userIDs[i] = r.UserID
 	}
-	userMap := s.resourceRepo.FindUsersByIDs(userIDs)
+	userMap := s.userClient.Hydrate(ctx, userIDs)
 
-	cards := make([]dto.ResourceCard, len(rows))
-	for i, r := range rows {
-		cards[i] = rowToCard(r, userMap[r.UserID])
+	cards := make([]dto.ResourceCard, 0, len(rows))
+	for _, r := range rows {
+		u := userMap[r.UserID]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
+		cards = append(cards, rowToCard(r, u))
 	}
 	return cards, nil
 }
@@ -452,16 +464,20 @@ func (s *ResourceService) buildRecommendations(
 	for i, r := range rows {
 		userIDs[i] = r.UserID
 	}
-	userMap := s.resourceRepo.FindUsersByIDs(userIDs)
+	userMap := s.userClient.Hydrate(ctx, userIDs)
 	briefMap := s.fetchWikiBriefs(ctx, []int{galgameID})
 
-	cards := make([]dto.ResourceCard, len(rows))
-	for i, r := range rows {
-		card := rowToCard(r, userMap[r.UserID])
+	cards := make([]dto.ResourceCard, 0, len(rows))
+	for _, r := range rows {
+		u := userMap[r.UserID]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
+		card := rowToCard(r, u)
 		if b, ok := briefMap[galgameID]; ok {
 			card.GalgameName = briefToName(b)
 		}
-		cards[i] = card
+		cards = append(cards, card)
 	}
 	return cards
 }

@@ -37,10 +37,6 @@ func briefToLocale(b galgameClient.GalgameBrief) dto.KunLanguage {
 	}
 }
 
-func userBriefRowToDTO(u repository.UserBriefRow) dto.UserBrief {
-	return dto.UserBrief{ID: u.ID, Name: u.Name, Avatar: u.Avatar}
-}
-
 // groupResourceMeta bucketises (galgame_id, platform, language) tuples into
 // per-galgame sets with insertion-order preservation and dedup.
 func groupResourceMeta(rows []repository.GalgameResourceMeta) (platforms, languages map[int][]string) {

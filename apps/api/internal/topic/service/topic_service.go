@@ -7,7 +7,9 @@ import (
 	"kun-galgame-api/internal/middleware"
 	"kun-galgame-api/internal/topic/dto"
 	"kun-galgame-api/internal/topic/repository"
+	userRepo "kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/errgroup"
@@ -18,6 +20,8 @@ type TopicService struct {
 	listRepo     *repository.TopicListRepository
 	taxonomyRepo *repository.TopicTaxonomyRepository
 	rdb          *redis.Client
+	userClient   *userclient.Client
+	stateRepo    *userRepo.StateRepository
 }
 
 func NewTopicService(
@@ -25,12 +29,16 @@ func NewTopicService(
 	listRepo *repository.TopicListRepository,
 	taxonomyRepo *repository.TopicTaxonomyRepository,
 	rdb *redis.Client,
+	userClient *userclient.Client,
+	stateRepo *userRepo.StateRepository,
 ) *TopicService {
 	return &TopicService{
 		topicRepo:    topicRepo,
 		listRepo:     listRepo,
 		taxonomyRepo: taxonomyRepo,
 		rdb:          rdb,
+		userClient:   userClient,
+		stateRepo:    stateRepo,
 	}
 }
 
@@ -52,7 +60,7 @@ func (s *TopicService) GetList(
 		return nil, 0, errors.ErrInternal("获取话题列表失败")
 	}
 
-	return s.mapListRows(rows, total)
+	return s.mapListRows(ctx, rows, total)
 }
 
 func (s *TopicService) GetResourceList(
@@ -69,11 +77,15 @@ func (s *TopicService) GetResourceList(
 		return nil, 0, errors.ErrInternal("获取资源话题列表失败")
 	}
 
-	return s.mapListRows(rows, total)
+	return s.mapListRows(ctx, rows, total)
 }
 
 // mapListRows enriches topic card rows with tags+sections and maps to DTOs.
-func (s *TopicService) mapListRows(rows []repository.TopicCardRow, total int64) ([]dto.TopicCard, int64, *errors.AppError) {
+// Identity (UserName/UserAvatar) is hydrated from OAuth via userclient since
+// kungal no longer keeps a local users table; banned authors get a
+// placeholder so the row still renders (per agreed "hide" policy at the
+// column level, full row-drop is left to the frontend).
+func (s *TopicService) mapListRows(ctx context.Context, rows []repository.TopicCardRow, total int64) ([]dto.TopicCard, int64, *errors.AppError) {
 	topicIDs := make([]int, len(rows))
 	for i, r := range rows {
 		topicIDs[i] = r.ID
@@ -82,10 +94,22 @@ func (s *TopicService) mapListRows(rows []repository.TopicCardRow, total int64) 
 	tagMap, _ := s.taxonomyRepo.FindTagNamesByTopicIDs(topicIDs)
 	sectionMap, _ := s.taxonomyRepo.FindSectionNamesByTopicIDs(topicIDs)
 
-	cards := make([]dto.TopicCard, len(rows))
+	uids := userclient.CollectIDs(rows, func(r repository.TopicCardRow) int { return r.UserID })
+	userMap := s.userClient.Hydrate(ctx, uids)
+	for i := range rows {
+		u := userMap[rows[i].UserID]
+		rows[i].UserName = u.Name
+		rows[i].UserAvatar = u.Avatar
+	}
+
+	cards := make([]dto.TopicCard, 0, len(rows))
 	for i, r := range rows {
-		// hasPoll is only computed on detail page — see GetDetail.
-		cards[i] = toTopicCard(r, tagMap[r.ID], sectionMap[r.ID], false)
+		// Drop banned authors' content from the listing.
+		if u, ok := userMap[r.UserID]; ok && !userclient.IsRenderable(u) {
+			continue
+		}
+		cards = append(cards, toTopicCard(r, tagMap[r.ID], sectionMap[r.ID], false))
+		_ = i
 	}
 	return cards, total, nil
 }
@@ -113,9 +137,19 @@ func (s *TopicService) GetDetail(
 	var isLiked, isDisliked, isFavorited, isUpvoted bool
 
 	g.Go(func() error {
-		var e error
-		author, e = s.topicRepo.FindTopicAuthor(topic.UserID)
-		return e
+		// Identity from OAuth, moemoepoint from kungal_user_state.
+		u, _, e := s.userClient.User(ctx, topic.UserID)
+		if e != nil {
+			return e
+		}
+		moe := 0
+		if state, _ := s.stateRepo.FindByID(topic.UserID); state != nil {
+			moe = state.Moemoepoint
+		}
+		author = &repository.TopicAuthorUser{
+			ID: u.ID, Name: u.Name, Avatar: u.Avatar, Moemoepoint: moe,
+		}
+		return nil
 	})
 	g.Go(func() error {
 		var e error

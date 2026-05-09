@@ -164,7 +164,7 @@ func (s *OfficialService) GetDetail(
 		Lang:         o.Lang,
 		Description:  o.Description,
 		Alias:        aliasesToNames(o.Alias),
-		Galgame:      s.enricher.ToCards(filtered),
+		Galgame:      s.enricher.ToCards(ctx, filtered),
 		GalgameCount: parsed.Total,
 	}, nil
 }

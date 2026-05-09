@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 
 	"kun-galgame-api/internal/galgame/model"
-	userModel "kun-galgame-api/internal/user/model"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -121,20 +120,6 @@ func (r *ResourceRepository) FindGalgameView(galgameID int) int {
 	var view int
 	r.db.Table("galgame").Select("view").Where("id = ?", galgameID).Scan(&view)
 	return view
-}
-
-// FindUsersByIDs batch-loads user brief info.
-func (r *ResourceRepository) FindUsersByIDs(ids []int) map[int]userModel.UserBrief {
-	if len(ids) == 0 {
-		return map[int]userModel.UserBrief{}
-	}
-	var users []userModel.UserBrief
-	r.db.Where("id IN ?", ids).Find(&users)
-	out := make(map[int]userModel.UserBrief, len(users))
-	for _, u := range users {
-		out[u.ID] = u
-	}
-	return out
 }
 
 // ──────────────────────────────────────────

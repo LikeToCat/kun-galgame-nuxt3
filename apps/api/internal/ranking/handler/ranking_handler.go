@@ -34,7 +34,7 @@ func (h *RankingHandler) GetTopicRanking(c *fiber.Ctx) error {
 	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
 		return response.Error(c, appErr)
 	}
-	return response.OK(c, h.rankingService.GetTopicRanking(&req))
+	return response.OK(c, h.rankingService.GetTopicRanking(c.Context(), &req))
 }
 
 // GetUserRanking returns user ranking.
@@ -44,5 +44,5 @@ func (h *RankingHandler) GetUserRanking(c *fiber.Ctx) error {
 	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
 		return response.Error(c, appErr)
 	}
-	return response.OK(c, h.rankingService.GetUserRanking(&req))
+	return response.OK(c, h.rankingService.GetUserRanking(c.Context(), &req))
 }

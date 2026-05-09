@@ -63,6 +63,7 @@ import (
 	"kun-galgame-api/pkg/config"
 	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
+	"kun-galgame-api/pkg/userclient"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
@@ -79,6 +80,8 @@ type App struct {
 	Config      *config.Config
 	OAuthClient *oauth.Client
 	UserRepo    *repository.UserRepository
+	UserState   *repository.StateRepository
+	UserClient  *userclient.Client
 
 	// Handlers
 	OAuthHandler               *handler.OAuthHandler
@@ -132,9 +135,9 @@ func New(cfg *config.Config) *App {
 
 	// Repositories
 	userRepo := repository.NewUserRepository(db)
+	userStateRepo := repository.NewStateRepository(db)
 	userStatsRepo := repository.NewUserStatsRepository(db)
 	userContentRepo := repository.NewUserContentRepository(db)
-	userBriefRepo := repository.NewUserBriefRepository(db)
 	messageRepository := msgRepo.NewMessageRepository(db)
 	chatRepository := msgRepo.NewChatRepository(db)
 
@@ -144,12 +147,20 @@ func New(cfg *config.Config) *App {
 	// OAuth client (used by auth service).
 	oauthClient := oauth.NewClient(cfg.OAuth)
 
+	// OAuth user-info client. Identity (name/avatar/bio/status/roles) is
+	// owned by OAuth post-migration; mappers call this for batch enrichment.
+	uc := userclient.New(userclient.Config{
+		BaseURL:      cfg.OAuth.ServerURL,
+		ClientID:     cfg.OAuth.ClientID,
+		ClientSecret: cfg.OAuth.ClientSecret,
+	})
+
 	// Services
-	authService := service.NewAuthService(userRepo, rdb, oauthClient, mailer)
-	userService := service.NewUserService(userRepo, userStatsRepo, userBriefRepo, rdb, gc)
-	userContentService := service.NewUserContentService(userContentRepo, userBriefRepo, gc)
-	messageSvc := msgService.NewMessageService(messageRepository)
-	chatSvc := msgService.NewChatService(chatRepository)
+	authService := service.NewAuthService(userStateRepo, rdb, oauthClient, uc)
+	userService := service.NewUserService(userStateRepo, userStatsRepo, rdb, gc, uc)
+	userContentService := service.NewUserContentService(userContentRepo, gc, uc)
+	messageSvc := msgService.NewMessageService(messageRepository, uc)
+	chatSvc := msgService.NewChatService(chatRepository, uc)
 	notifier := msgService.NewNotifier(messageRepository)
 
 	// Topic
@@ -159,33 +170,33 @@ func New(cfg *config.Config) *App {
 	replyRepository := topicRepo.NewReplyRepository(db)
 	topicCommentRepo := topicRepo.NewCommentRepository(db)
 	pollRepository := topicRepo.NewPollRepository(db)
-	topicSvc := topicService.NewTopicService(topicRepository, topicListRepo, topicTaxonomyRepo, rdb)
-	topicWriteSvc := topicService.NewTopicWriteService(topicRepository, topicTaxonomyRepo, replyRepository, rdb, notifier)
-	replySvc := topicService.NewReplyService(replyRepository, topicCommentRepo, topicRepository, rdb)
-	commentSvc := topicService.NewCommentService(replyRepository, topicCommentRepo, rdb)
-	pollSvc := topicService.NewPollService(pollRepository, topicRepository, rdb)
+	topicSvc := topicService.NewTopicService(topicRepository, topicListRepo, topicTaxonomyRepo, rdb, uc, userStateRepo)
+	topicWriteSvc := topicService.NewTopicWriteService(topicRepository, topicTaxonomyRepo, replyRepository, userStateRepo, rdb, notifier)
+	replySvc := topicService.NewReplyService(replyRepository, topicCommentRepo, topicRepository, userStateRepo, uc, rdb)
+	commentSvc := topicService.NewCommentService(replyRepository, topicCommentRepo, userStateRepo, uc, rdb)
+	pollSvc := topicService.NewPollService(pollRepository, topicRepository, userStateRepo, uc, rdb)
 
 	// Galgame
 	galgameCommentRepo := galgameRepo.NewCommentRepository(db)
-	galgameCommentSvc := galgameService.NewCommentService(galgameCommentRepo)
+	galgameCommentSvc := galgameService.NewCommentService(galgameCommentRepo, userStateRepo, uc)
 	galgameResourceRepo := galgameRepo.NewResourceRepository(db)
-	galgameResourceSvc := galgameService.NewResourceService(galgameResourceRepo, gc)
+	galgameResourceSvc := galgameService.NewResourceService(galgameResourceRepo, gc, uc)
 	galgameRatingRepo := galgameRepo.NewRatingRepository(db)
-	galgameRatingSvc := galgameService.NewRatingService(galgameRatingRepo, gc)
+	galgameRatingSvc := galgameService.NewRatingService(galgameRatingRepo, gc, uc)
 	galgameLocalRepo := galgameRepo.NewGalgameRepository(db)
 	galgameInteractionRepo := galgameRepo.NewGalgameInteractionRepository(db)
 	galgameListRepo := galgameRepo.NewGalgameListRepository(db)
 	galgameResourceMetaRepo := galgameRepo.NewGalgameResourceMetaRepository(db)
 	galgameDetailRatingRepo := galgameRepo.NewGalgameDetailRatingRepository(db)
-	galgameEnricher := galgameService.NewGalgameEnricher(galgameLocalRepo)
+	galgameEnricher := galgameService.NewGalgameEnricher(galgameLocalRepo, uc)
 	galgameSeriesSvc := galgameService.NewSeriesService(gc, galgameEnricher)
 	galgameOfficialSvc := galgameService.NewOfficialService(gc, galgameEnricher)
 	galgameEngineSvc := galgameService.NewEngineService(gc, galgameEnricher)
 	galgameTagSvc := galgameService.NewTagService(gc, galgameEnricher)
-	galgameWikiSvc := galgameService.NewWikiService(gc, galgameLocalRepo)
+	galgameWikiSvc := galgameService.NewWikiService(gc, galgameLocalRepo, uc)
 	galgameCoreSvc := galgameService.NewGalgameService(
 		galgameLocalRepo, galgameInteractionRepo, galgameListRepo,
-		galgameResourceMetaRepo, galgameDetailRatingRepo, gc,
+		galgameResourceMetaRepo, galgameDetailRatingRepo, gc, uc,
 	)
 
 	// Website
@@ -194,9 +205,9 @@ func New(cfg *config.Config) *App {
 	websiteTagRepo := websiteRepo.NewTagRepository(db)
 	websiteCommentRepo := websiteRepo.NewCommentRepository(db)
 	websiteCoreSvc := websiteService.NewWebsiteService(
-		websiteRepository, websiteCategoryRepo, websiteTagRepo, websiteCommentRepo,
+		websiteRepository, websiteCategoryRepo, websiteTagRepo, websiteCommentRepo, uc,
 	)
-	websiteCommentSvc := websiteService.NewCommentService(websiteCommentRepo, websiteRepository, notifier)
+	websiteCommentSvc := websiteService.NewCommentService(websiteCommentRepo, websiteRepository, notifier, uc)
 	websiteCategorySvc := websiteService.NewCategoryService(websiteCategoryRepo, websiteRepository, websiteTagRepo)
 	websiteTagSvc := websiteService.NewTagService(websiteTagRepo, websiteRepository, websiteCategoryRepo)
 
@@ -233,10 +244,12 @@ func New(cfg *config.Config) *App {
 	// Handlers
 	app := &App{
 		DB: db, Redis: rdb, S3: s3Client, Mailer: mailer, Config: cfg, OAuthClient: oauthClient,
-		UserRepo: userRepo,
+		UserRepo:   userRepo,
+		UserState:  userStateRepo,
+		UserClient: uc,
 		OAuthHandler:           handler.NewOAuthHandler(authService, cfg.Server.Mode == "prod"),
 		UserHandler:            handler.NewUserHandler(userService, userContentService),
-		HomeHandler:            homeHandler.NewHomeHandler(homeService.NewHomeService(homeRepo.NewHomeRepository(db), gc)),
+		HomeHandler:            homeHandler.NewHomeHandler(homeService.NewHomeService(homeRepo.NewHomeRepository(db), gc, uc)),
 		TopicHandler:           topicHandler.NewTopicHandler(topicSvc, topicWriteSvc),
 		ReplyHandler:           topicHandler.NewReplyHandler(replySvc),
 		TopicCommentHandler:    topicHandler.NewCommentHandler(commentSvc),
@@ -246,8 +259,8 @@ func New(cfg *config.Config) *App {
 		AdminOverviewHandler:   adminHandler.NewOverviewHandler(adminOverviewSvc),
 		AdminSettingHandler:    adminHandler.NewSettingHandler(adminSettingSvc),
 		AdminUserHandler:       adminHandler.NewUserHandler(adminUserSvc),
-		RankingHandler:         rankingHandler.NewRankingHandler(rankingService.NewRankingService(rankingRepo.NewRankingRepository(db), gc)),
-		SectionHandler:         sectionHandler.NewSectionHandler(sectionService.NewSectionService(sectionRepo.NewSectionRepository(db))),
+		RankingHandler:         rankingHandler.NewRankingHandler(rankingService.NewRankingService(rankingRepo.NewRankingRepository(db), gc, uc)),
+		SectionHandler:         sectionHandler.NewSectionHandler(sectionService.NewSectionService(sectionRepo.NewSectionRepository(db), uc)),
 		DocArticleHandler:      docHandler.NewArticleHandler(docArticleSvc),
 		DocCategoryHandler:     docHandler.NewCategoryHandler(docCategorySvc),
 		DocTagHandler:          docHandler.NewTagHandler(docTagSvc),
@@ -256,9 +269,9 @@ func New(cfg *config.Config) *App {
 		WebsiteCategoryHandler: websiteHandler.NewCategoryHandler(websiteCategorySvc),
 		WebsiteTagHandler:      websiteHandler.NewTagHandler(websiteTagSvc),
 		UpdateHandler:          updateHandler.NewUpdateHandler(updateRepo.NewUpdateRepository(db)),
-		UnmoeHandler:           unmoeHandler.NewUnmoeHandler(unmoeRepo.NewUnmoeRepository(db)),
+		UnmoeHandler:           unmoeHandler.NewUnmoeHandler(unmoeRepo.NewUnmoeRepository(db), uc),
 		ReportHandler:          reportHandler.NewReportHandler(reportRepo.NewReportRepository(db)),
-		RSSHandler:             rssHandler.NewRSSHandler(rssRepo.NewRSSRepository(db), gc, userBriefRepo),
+		RSSHandler:             rssHandler.NewRSSHandler(rssRepo.NewRSSRepository(db), gc, uc),
 		GalgameHandler:         galgameHandler.NewGalgameHandler(galgameCoreSvc),
 		GalgameCommentHandler:  galgameHandler.NewCommentHandler(galgameCommentSvc),
 		GalgameResourceHandler: galgameHandler.NewResourceHandler(galgameResourceSvc),
@@ -267,9 +280,9 @@ func New(cfg *config.Config) *App {
 			galgameSeriesSvc, galgameOfficialSvc, galgameEngineSvc, galgameTagSvc,
 		),
 		GalgameWikiHandler:         galgameHandler.NewWikiHandler(galgameWikiSvc),
-		ActivityHandler:            activityHandler.NewActivityHandler(activityService.NewActivityService(activityRepo.NewActivityRepository(db), gc)),
+		ActivityHandler:            activityHandler.NewActivityHandler(activityService.NewActivityService(activityRepo.NewActivityRepository(db), gc, uc)),
 		ImageHandler:               imageHandler.NewImageHandler(imageService.NewImageService(imageRepo.NewImageRepository(db), s3Client)),
-		SearchHandler:              searchHandler.NewSearchHandler(searchService.NewSearchService(searchRepo.NewSearchRepository(db), gc, galgameEnricher)),
+		SearchHandler:              searchHandler.NewSearchHandler(searchService.NewSearchService(searchRepo.NewSearchRepository(db), gc, galgameEnricher, uc)),
 		ToolsetHandler:             toolsetHandler.NewToolsetHandler(toolsetCoreSvc),
 		ToolsetPracticalityHandler: toolsetHandler.NewPracticalityHandler(toolsetPracticalitySvc),
 		ToolsetCommentHandler:      toolsetHandler.NewCommentHandler(toolsetCommentSvc),

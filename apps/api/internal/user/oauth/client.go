@@ -38,12 +38,20 @@ type TokenResponse struct {
 }
 
 // UserInfo represents the OAuth userinfo payload.
+//
+// IMPORTANT: kungal post-migration relies on the integer `id` (= OAuth
+// users.id) and the `roles` array. The OIDC userinfo standard only
+// requires `sub` (UUID). The OAuth team must extend /oauth/userinfo to
+// include `id` and `roles` so kungal can derive its uid + admin role
+// without a second round-trip.
 type UserInfo struct {
-	Sub       string `json:"sub"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
-	Picture   string `json:"picture"`
-	UpdatedAt int64  `json:"updated_at"`
+	ID        int      `json:"id"`
+	Sub       string   `json:"sub"`
+	Name      string   `json:"name"`
+	Email     string   `json:"email"`
+	Picture   string   `json:"picture"`
+	Roles     []string `json:"roles"`
+	UpdatedAt int64    `json:"updated_at"`
 }
 
 // ExchangeCode exchanges an authorization code for access/refresh tokens.

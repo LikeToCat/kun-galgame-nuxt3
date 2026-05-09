@@ -254,6 +254,8 @@ func (r *UserContentRepository) FindResourceLinks(resourceIDs []int) (map[int][]
 // Galgame ratings
 // ──────────────────────────────────────────
 
+// UserRating is one rating row. Identity (UserName/UserAvatar) is hydrated
+// at the service layer via userclient.
 type UserRating struct {
 	ID           int    `gorm:"column:id" json:"id"`
 	GalgameID    int    `gorm:"column:galgame_id" json:"galgameId"`
@@ -273,8 +275,6 @@ type UserRating struct {
 	SpoilerLevel string `gorm:"column:spoiler_level" json:"spoiler_level"`
 	LikeCount    int    `gorm:"column:like_count" json:"likeCount"`
 	UserID       int    `gorm:"column:user_id" json:"-"`
-	UserName     string `gorm:"column:user_name" json:"-"`
-	UserAvatar   string `gorm:"column:user_avatar" json:"-"`
 	Created      string `gorm:"column:created" json:"created"`
 	Updated      string `gorm:"column:updated" json:"updated"`
 }
@@ -290,9 +290,8 @@ func (r *UserContentRepository) FindUserRatings(uid int, page, limit int) ([]Use
 		Select(`galgame_rating.id, galgame_rating.galgame_id, galgame_rating.recommend, galgame_rating.overall, galgame_rating.view,
 			galgame_rating.art, galgame_rating.story, galgame_rating.music, galgame_rating.character, galgame_rating.route, galgame_rating.system, galgame_rating.voice, galgame_rating.replay_value,
 			galgame_rating.galgame_type, galgame_rating.play_status, galgame_rating.spoiler_level, galgame_rating.like_count,
-			galgame_rating.user_id, u.name AS user_name, u.avatar AS user_avatar,
+			galgame_rating.user_id,
 			galgame_rating.created, galgame_rating.updated`).
-		Joins(`LEFT JOIN "user" u ON u.id = galgame_rating.user_id`).
 		Where("galgame_rating.user_id = ?", uid).
 		Order("galgame_rating.created DESC").Offset(offset).Limit(limit).
 		Scan(&results).Error

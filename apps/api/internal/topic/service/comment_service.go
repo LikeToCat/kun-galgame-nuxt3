@@ -8,7 +8,9 @@ import (
 	"kun-galgame-api/internal/topic/dto"
 	topicModel "kun-galgame-api/internal/topic/model"
 	"kun-galgame-api/internal/topic/repository"
+	userRepo "kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -17,6 +19,8 @@ import (
 type CommentService struct {
 	replyRepo   *repository.ReplyRepository
 	commentRepo *repository.CommentRepository
+	stateRepo   *userRepo.StateRepository
+	userClient  *userclient.Client
 	rdb         *redis.Client
 	helpers     InteractionHelpers
 }
@@ -24,9 +28,14 @@ type CommentService struct {
 func NewCommentService(
 	replyRepo *repository.ReplyRepository,
 	commentRepo *repository.CommentRepository,
+	stateRepo *userRepo.StateRepository,
+	userClient *userclient.Client,
 	rdb *redis.Client,
 ) *CommentService {
-	return &CommentService{replyRepo: replyRepo, commentRepo: commentRepo, rdb: rdb}
+	return &CommentService{
+		replyRepo: replyRepo, commentRepo: commentRepo,
+		stateRepo: stateRepo, userClient: userClient, rdb: rdb,
+	}
 }
 
 // ──────────────────────────────────────────
@@ -69,9 +78,9 @@ func (s *CommentService) CreateComment(
 		return nil, errors.ErrInternal("发表评论失败")
 	}
 
-	// Resolve author + target in one batch so the response carries the
-	// fields the frontend TopicComment type declares.
-	userMap := s.commentRepo.FindUsersByIDs([]int{uid, targetUserID})
+	// Resolve author + target in one batch via OAuth so the response carries
+	// the fields the frontend TopicComment type declares.
+	userMap := s.userClient.Hydrate(ctx, []int{uid, targetUserID})
 	author := userMap[uid]
 	target := userMap[targetUserID]
 
@@ -153,11 +162,11 @@ func (s *CommentService) DeleteComment(ctx context.Context, uid, role, commentID
 	}
 
 	txErr := s.replyRepo.DB().Transaction(func(tx *gorm.DB) error {
-		user, err := s.replyRepo.LockUserForUpdate(tx, comment.UserID)
+		state, err := s.stateRepo.LockForUpdate(tx, comment.UserID)
 		if err != nil {
 			return err
 		}
-		if user.Moemoepoint < penalty {
+		if state.Moemoepoint < penalty {
 			return gorm.ErrCheckConstraintViolated
 		}
 

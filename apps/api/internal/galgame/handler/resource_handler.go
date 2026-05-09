@@ -68,7 +68,7 @@ func (h *ResourceHandler) GetResourceDownloadDetail(c *fiber.Ctx) error {
 	}
 
 	currentUID := optionalUID(c)
-	detail, appErr := h.resourceService.GetResourceDownloadDetail(id, currentUID)
+	detail, appErr := h.resourceService.GetResourceDownloadDetail(c.Context(), id, currentUID)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
@@ -83,7 +83,7 @@ func (h *ResourceHandler) GetGalgameResources(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	cards, appErr := h.resourceService.GetGalgameResources(&req)
+	cards, appErr := h.resourceService.GetGalgameResources(c.Context(), &req)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}

@@ -20,56 +20,51 @@ func (r *CommentRepository) DB() *gorm.DB { return r.db }
 // Row projections
 // ──────────────────────────────────────────
 
-// CommentRow is the joined comment+user row used for list/detail endpoints.
+// CommentRow is a comment row used for list/detail endpoints. Identity is
+// hydrated by the service layer via userclient.
 type CommentRow struct {
-	ID         int     `gorm:"column:id"`
-	Content    string  `gorm:"column:content"`
-	ParentID   *int    `gorm:"column:parent_id"`
-	UserID     int     `gorm:"column:user_id"`
-	UserName   string  `gorm:"column:user_name"`
-	UserAvatar string  `gorm:"column:user_avatar"`
-	Created    string  `gorm:"column:created"`
-	Edited     *string `gorm:"column:edited"`
+	ID       int     `gorm:"column:id"`
+	Content  string  `gorm:"column:content"`
+	ParentID *int    `gorm:"column:parent_id"`
+	UserID   int     `gorm:"column:user_id"`
+	Created  string  `gorm:"column:created"`
+	Edited   *string `gorm:"column:edited"`
 }
 
-// DetailCommentRow is the joined row used by the website detail endpoint.
+// DetailCommentRow is a comment row used by the website detail endpoint.
+// Identity is hydrated by the service layer via userclient.
 type DetailCommentRow struct {
-	ID         int    `gorm:"column:id"`
-	Content    string `gorm:"column:content"`
-	UserID     int    `gorm:"column:user_id"`
-	UserName   string `gorm:"column:user_name"`
-	UserAvatar string `gorm:"column:user_avatar"`
-	Created    string `gorm:"column:created"`
-	Updated    string `gorm:"column:updated"`
+	ID      int    `gorm:"column:id"`
+	Content string `gorm:"column:content"`
+	UserID  int    `gorm:"column:user_id"`
+	Created string `gorm:"column:created"`
+	Updated string `gorm:"column:updated"`
 }
 
 // ──────────────────────────────────────────
 // Reads
 // ──────────────────────────────────────────
 
-// FindByWebsite returns all comments for a website joined with the author user.
+// FindByWebsite returns all comments for a website. Identity is hydrated at
+// the service layer via userclient.
 func (r *CommentRepository) FindByWebsite(websiteID int) []CommentRow {
 	var rows []CommentRow
 	r.db.Table("galgame_website_comment c").
 		Select(`c.id, c.content, c.parent_id, c.user_id,
-			u.name AS user_name, u.avatar AS user_avatar,
 			c.created, c.edited`).
-		Joins(`LEFT JOIN "user" u ON u.id = c.user_id`).
 		Where("c.website_id = ?", websiteID).
 		Order("c.created DESC").
 		Scan(&rows)
 	return rows
 }
 
-// FindByWebsiteForDetail returns a slim comment+user projection used by the
-// website detail endpoint.
+// FindByWebsiteForDetail returns a slim comment projection used by the
+// website detail endpoint. Identity is hydrated at the service layer.
 func (r *CommentRepository) FindByWebsiteForDetail(websiteID int) []DetailCommentRow {
 	var rows []DetailCommentRow
 	r.db.Table("galgame_website_comment c").
 		Select(`c.id, c.content, c.user_id,
-			u.name AS user_name, u.avatar AS user_avatar,
 			c.created, c.updated`).
-		Joins(`LEFT JOIN "user" u ON u.id = c.user_id`).
 		Where("c.website_id = ?", websiteID).
 		Order("c.created DESC").
 		Scan(&rows)

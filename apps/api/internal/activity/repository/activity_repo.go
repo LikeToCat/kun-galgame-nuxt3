@@ -26,8 +26,8 @@ func NewActivityRepository(db *gorm.DB) *ActivityRepository {
 //	type_str, id, content, link, created, user_id, galgame_id
 //
 // `galgame_id` is 0 for activities that are not galgame-scoped. All column
-// references must be fully qualified (t.xxx) to avoid ambiguity when later
-// JOINed with the "user" table.
+// references should be fully qualified (t.xxx) to keep the UNION ALL query
+// unambiguous.
 type ActivitySource struct {
 	TypeStr string
 	Query   string
@@ -175,6 +175,8 @@ var Sources = map[string]ActivitySource{
 // Row projection
 // ──────────────────────────────────────────
 
+// ActivityRow is one row of the timeline. Identity (UserName/Avatar) is
+// hydrated by the service layer via userclient.
 type ActivityRow struct {
 	TypeStr   string    `gorm:"column:type_str"`
 	ID        int       `gorm:"column:id"`
@@ -183,14 +185,6 @@ type ActivityRow struct {
 	Created   time.Time `gorm:"column:created"`
 	UserID    int       `gorm:"column:user_id"`
 	GalgameID int       `gorm:"column:galgame_id"`
-	UserName  string    `gorm:"column:user_name"`
-	Avatar    string    `gorm:"column:avatar"`
-}
-
-type UserInfoRow struct {
-	ID     int    `gorm:"column:id"`
-	Name   string `gorm:"column:name"`
-	Avatar string `gorm:"column:avatar"`
 }
 
 // ──────────────────────────────────────────
@@ -204,8 +198,8 @@ func (r *ActivityRepository) GetSource(typeStr string) (ActivitySource, bool) {
 	return s, ok
 }
 
-// FetchSingleSource runs a single activity source with user JOIN,
-// pagination, and count.
+// FetchSingleSource runs a single activity source with pagination and count.
+// Identity is hydrated at the service layer via userclient.
 func (r *ActivityRepository) FetchSingleSource(src ActivitySource, page, limit int) ([]ActivityRow, int64, error) {
 	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM (%s) AS sub`, src.Query)
 	var total int64
@@ -214,9 +208,8 @@ func (r *ActivityRepository) FetchSingleSource(src ActivitySource, page, limit i
 	}
 
 	dataSQL := fmt.Sprintf(
-		`SELECT sub.*, u.name AS user_name, u.avatar
+		`SELECT sub.*
 		FROM (%s) AS sub
-		LEFT JOIN "user" u ON u.id = sub.user_id
 		ORDER BY sub.created DESC
 		LIMIT %d OFFSET %d`,
 		src.Query, limit, (page-1)*limit,
@@ -229,7 +222,8 @@ func (r *ActivityRepository) FetchSingleSource(src ActivitySource, page, limit i
 }
 
 // FetchTimeline runs a single UNION ALL query across all source tables,
-// letting PostgreSQL handle sort and pagination in one pass.
+// letting PostgreSQL handle sort and pagination in one pass. Identity is
+// hydrated at the service layer via userclient.
 func (r *ActivityRepository) FetchTimeline(page, limit int) ([]ActivityRow, int64, error) {
 	union := buildUnionAll()
 
@@ -240,9 +234,8 @@ func (r *ActivityRepository) FetchTimeline(page, limit int) ([]ActivityRow, int6
 	}
 
 	dataSQL := fmt.Sprintf(
-		`SELECT u.*, usr.name AS user_name, usr.avatar
+		`SELECT u.*
 		FROM (%s) AS u
-		LEFT JOIN "user" usr ON usr.id = u.user_id
 		ORDER BY u.created DESC
 		LIMIT %d OFFSET %d`,
 		union, limit, (page-1)*limit,
@@ -252,17 +245,6 @@ func (r *ActivityRepository) FetchTimeline(page, limit int) ([]ActivityRow, int6
 		return nil, 0, err
 	}
 	return rows, total, nil
-}
-
-// FindUsersByIDs fetches (id, name, avatar) for the given user IDs.
-func (r *ActivityRepository) FindUsersByIDs(ids []int) []UserInfoRow {
-	if len(ids) == 0 {
-		return nil
-	}
-	var users []UserInfoRow
-	r.db.Table(`"user"`).Select("id, name, avatar").
-		Where("id IN ?", ids).Scan(&users)
-	return users
 }
 
 // buildUnionAll joins all source queries with UNION ALL.

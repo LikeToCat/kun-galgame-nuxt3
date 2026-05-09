@@ -12,6 +12,7 @@ import (
 	"kun-galgame-api/internal/galgame/model"
 	"kun-galgame-api/internal/galgame/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"gorm.io/gorm"
 )
@@ -19,14 +20,16 @@ import (
 type RatingService struct {
 	ratingRepo *repository.RatingRepository
 	wikiClient *client.GalgameClient
+	userClient *userclient.Client
 	helpers    InteractionHelpers
 }
 
 func NewRatingService(
 	ratingRepo *repository.RatingRepository,
 	wikiClient *client.GalgameClient,
+	userClient *userclient.Client,
 ) *RatingService {
-	return &RatingService{ratingRepo: ratingRepo, wikiClient: wikiClient}
+	return &RatingService{ratingRepo: ratingRepo, wikiClient: wikiClient, userClient: userClient}
 }
 
 // ratingReward applies the documented thresholds (architecture-patterns spec):
@@ -73,12 +76,16 @@ func (s *RatingService) GetAllRatings(
 		userIDs[i] = r.UserID
 		galgameIDs[i] = r.GalgameID
 	}
-	userMap := s.ratingRepo.FindUsersByIDs(userIDs)
+	userMap := s.userClient.Hydrate(ctx, userIDs)
 	briefMap := s.fetchWikiBriefs(ctx, galgameIDs)
 
-	cards := make([]dto.RatingCard, len(rows))
-	for i, r := range rows {
-		cards[i] = ratingRowToCard(r, userMap[r.UserID], briefMap[r.GalgameID])
+	cards := make([]dto.RatingCard, 0, len(rows))
+	for _, r := range rows {
+		u := userMap[r.UserID]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
+		cards = append(cards, ratingRowToCard(r, u, briefMap[r.GalgameID]))
 	}
 
 	return &dto.RatingListPage{RatingData: cards, Total: total}, nil
@@ -103,29 +110,47 @@ func (s *RatingService) GetRatingDetail(
 
 	// Liked users
 	likerIDs := s.ratingRepo.FindLikerIDs(ratingID)
-	likedUsers := s.ratingRepo.FindUsersListByIDs(likerIDs)
 	isLiked := containsInt(likerIDs, currentUserID)
 
-	// Author + comments
-	authorMap := s.ratingRepo.FindUsersByIDs([]int{row.UserID})
+	// Author + comments — collect all uids and hydrate in one batch.
 	commentRows := s.ratingRepo.FindComments(ratingID)
+	uidSet := map[int]struct{}{row.UserID: {}}
+	for _, id := range likerIDs {
+		uidSet[id] = struct{}{}
+	}
+	for _, cm := range commentRows {
+		uidSet[cm.UserID] = struct{}{}
+		if cm.TargetUserID != nil {
+			uidSet[*cm.TargetUserID] = struct{}{}
+		}
+	}
+	uids := make([]int, 0, len(uidSet))
+	for id := range uidSet {
+		uids = append(uids, id)
+	}
+	userMap := s.userClient.Hydrate(ctx, uids)
+
 	comments := make([]dto.RatingCommentItem, len(commentRows))
 	for i, cm := range commentRows {
-		comments[i] = ratingCommentRowToDTO(cm)
+		comments[i] = ratingCommentRowToDTO(cm, userMap)
 	}
 
 	// Galgame detail from wiki
 	galgame := s.buildRatingGalgame(ctx, row.GalgameID)
 
-	// Authored user projection
-	authorBriefs := make([]dto.UserBrief, 0, len(likedUsers))
-	for _, u := range likedUsers {
+	// Author projection of liked users (preserve liker order).
+	authorBriefs := make([]dto.UserBrief, 0, len(likerIDs))
+	for _, id := range likerIDs {
+		u := userMap[id]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
 		authorBriefs = append(authorBriefs, userBriefToDTO(u))
 	}
 
 	detail := &dto.RatingDetail{
 		ID:           row.ID,
-		User:         userBriefToDTO(authorMap[row.UserID]),
+		User:         userBriefToDTO(userMap[row.UserID]),
 		Recommend:    row.Recommend,
 		Overall:      row.Overall,
 		View:         row.View,
@@ -185,7 +210,7 @@ func (s *RatingService) CreateRating(
 		return nil, errors.ErrInternal("创建评分失败")
 	}
 
-	user, _ := s.ratingRepo.FindUserByID(uid)
+	user, _, _ := s.userClient.User(ctx, uid)
 	briefMap := s.fetchWikiBriefs(ctx, []int{req.GalgameID})
 
 	return &dto.CreatedRating{
@@ -349,6 +374,7 @@ func (s *RatingService) ToggleRatingLike(
 // ──────────────────────────────────────────
 
 func (s *RatingService) CreateRatingComment(
+	ctx context.Context,
 	uid int,
 	req *dto.CreateRatingCommentRequest,
 ) (*dto.CreatedRatingComment, *errors.AppError) {
@@ -382,8 +408,8 @@ func (s *RatingService) CreateRatingComment(
 		return nil, errors.ErrInternal("评论失败")
 	}
 
-	user, _ := s.ratingRepo.FindUserByID(uid)
-	targetUser, ok := s.ratingRepo.FindUserByID(target)
+	user, _, _ := s.userClient.User(ctx, uid)
+	targetUser, hasTarget, _ := s.userClient.User(ctx, target)
 	resp := &dto.CreatedRatingComment{
 		ID:      c.ID,
 		Content: c.Content,
@@ -391,7 +417,7 @@ func (s *RatingService) CreateRatingComment(
 		Created: c.CreatedAt.Format(time.RFC3339),
 		Updated: c.UpdatedAt.Format(time.RFC3339),
 	}
-	if ok {
+	if hasTarget {
 		t := userBriefToDTO(targetUser)
 		resp.TargetUser = &t
 	}
@@ -404,6 +430,7 @@ func (s *RatingService) CreateRatingComment(
 // ──────────────────────────────────────────
 
 func (s *RatingService) UpdateRatingComment(
+	ctx context.Context,
 	uid int,
 	req *dto.UpdateRatingCommentRequest,
 ) (*dto.CreatedRatingComment, *errors.AppError) {
@@ -418,7 +445,7 @@ func (s *RatingService) UpdateRatingComment(
 		return nil, errors.ErrInternal("更新评论失败")
 	}
 
-	user, _ := s.ratingRepo.FindUserByID(c.UserID)
+	user, _, _ := s.userClient.User(ctx, c.UserID)
 	resp := &dto.CreatedRatingComment{
 		ID: c.ID, Content: req.Content,
 		User:    userBriefToDTO(user),
@@ -426,7 +453,7 @@ func (s *RatingService) UpdateRatingComment(
 		Updated: time.Now().Format(time.RFC3339),
 	}
 	if c.TargetUserID != nil {
-		if t, ok := s.ratingRepo.FindUserByID(*c.TargetUserID); ok {
+		if t, ok, _ := s.userClient.User(ctx, *c.TargetUserID); ok {
 			td := userBriefToDTO(t)
 			resp.TargetUser = &td
 		}

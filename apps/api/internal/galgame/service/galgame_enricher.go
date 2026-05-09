@@ -1,8 +1,11 @@
 package service
 
 import (
+	"context"
+
 	"kun-galgame-api/internal/galgame/dto"
 	"kun-galgame-api/internal/galgame/repository"
+	"kun-galgame-api/pkg/userclient"
 )
 
 // GalgameEnricher turns wiki galgame items into the enriched GalgameCard
@@ -13,10 +16,11 @@ import (
 // across series / official / engine / tag detail endpoints.
 type GalgameEnricher struct {
 	galgameRepo *repository.GalgameRepository
+	userClient  *userclient.Client
 }
 
-func NewGalgameEnricher(galgameRepo *repository.GalgameRepository) *GalgameEnricher {
-	return &GalgameEnricher{galgameRepo: galgameRepo}
+func NewGalgameEnricher(galgameRepo *repository.GalgameRepository, userClient *userclient.Client) *GalgameEnricher {
+	return &GalgameEnricher{galgameRepo: galgameRepo, userClient: userClient}
 }
 
 // FilterSFW removes NSFW items when the caller requests SFW-only content.
@@ -63,8 +67,8 @@ func (e *GalgameEnricher) Samples(items []dto.WikiGalgameItem, n int) []dto.Galg
 }
 
 // ToCards converts wiki galgame items into enriched GalgameCard DTOs, batch-
-// loading users and local stats once.
-func (e *GalgameEnricher) ToCards(items []dto.WikiGalgameItem) []dto.GalgameCard {
+// loading users (from OAuth) and local stats once.
+func (e *GalgameEnricher) ToCards(ctx context.Context, items []dto.WikiGalgameItem) []dto.GalgameCard {
 	if len(items) == 0 {
 		return []dto.GalgameCard{}
 	}
@@ -76,7 +80,7 @@ func (e *GalgameEnricher) ToCards(items []dto.WikiGalgameItem) []dto.GalgameCard
 		userIDs[i] = g.UserID
 	}
 
-	userMap := e.galgameRepo.FindUsersByIDs(userIDs)
+	userMap := e.userClient.Hydrate(ctx, userIDs)
 	localMap := e.galgameRepo.FindLocalBatch(galgameIDs)
 
 	cards := make([]dto.GalgameCard, len(items))

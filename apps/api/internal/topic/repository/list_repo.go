@@ -52,9 +52,7 @@ func (r *TopicListRepository) FindList(
 			topic.is_nsfw, topic.like_count, topic.reply_count,
 			topic.comment_count, topic.best_answer_id,
 			topic.status_update_time, topic.upvote_time,
-			topic.user_id,
-			"user".name AS user_name, "user".avatar AS user_avatar`).
-		Joins(`LEFT JOIN "user" ON "user".id = topic.user_id`).
+			topic.user_id`).
 		Where("topic.status != 1")
 
 	if !isNSFW {
@@ -96,14 +94,12 @@ func (r *TopicListRepository) FindResourceList(
 			topic.is_nsfw, topic.like_count, topic.reply_count,
 			topic.comment_count, topic.best_answer_id,
 			topic.status_update_time, topic.upvote_time,
-			topic.user_id,
-			"user".name AS user_name, "user".avatar AS user_avatar`).
-		Joins(`LEFT JOIN "user" ON "user".id = topic.user_id`).
+			topic.user_id`).
 		Joins(`JOIN topic_section_relation tsr ON tsr.topic_id = topic.id`).
 		Joins(`JOIN topic_section ts ON ts.id = tsr.topic_section_id`).
 		Where("topic.status != 1").
 		Where("ts.name IN ?", []string{"g-seeking", "g-other", "t-help"}).
-		Group("topic.id, \"user\".name, \"user\".avatar")
+		Group("topic.id")
 
 	if !isNSFW {
 		query = query.Where("topic.is_nsfw = false")

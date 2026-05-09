@@ -23,16 +23,14 @@ func (r *MessageRepository) DB() *gorm.DB {
 // ──────────────────────────────────────────
 
 type MessageRow struct {
-	ID             int
-	SenderID       int
-	SenderName     string
-	SenderAvatar   string
-	ReceiverID     int
-	Link           string
-	Content        string
-	Status         string
-	Type           string
-	CreatedAt      string
+	ID         int
+	SenderID   int
+	ReceiverID int
+	Link       string
+	Content    string
+	Status     string
+	Type       string
+	CreatedAt  string
 }
 
 func (r *MessageRepository) FindMessages(
@@ -44,9 +42,8 @@ func (r *MessageRepository) FindMessages(
 	var total int64
 
 	query := r.db.Table("message m").
-		Select(`m.id, m.sender_id, u.name AS sender_name, u.avatar AS sender_avatar,
+		Select(`m.id, m.sender_id,
 			m.receiver_id, m.link, m.content, m.status, m.type, m.created AS created_at`).
-		Joins(`LEFT JOIN "user" u ON u.id = m.sender_id`).
 		Where("m.receiver_id = ?", receiverID)
 
 	if msgType != "" {
@@ -87,8 +84,6 @@ type SystemMessageRow struct {
 	ContentZhCN string
 	ContentZhTW string
 	UserID      int
-	UserName    string
-	UserAvatar  string
 	CreatedAt   string
 }
 
@@ -97,9 +92,8 @@ func (r *MessageRepository) FindSystemMessages() ([]SystemMessageRow, error) {
 	err := r.db.Table("system_message sm").
 		Select(`sm.id, sm.status, sm.content_en_us, sm.content_ja_jp,
 			sm.content_zh_cn, sm.content_zh_tw,
-			sm.user_id, u.name AS user_name, u.avatar AS user_avatar,
+			sm.user_id,
 			sm.created AS created_at`).
-		Joins(`LEFT JOIN "user" u ON u.id = sm.user_id`).
 		Order("sm.created DESC").
 		Find(&rows).Error
 	return rows, err

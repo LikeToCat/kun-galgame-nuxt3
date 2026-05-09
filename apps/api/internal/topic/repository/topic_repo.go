@@ -4,10 +4,8 @@ import (
 	"time"
 
 	"kun-galgame-api/internal/topic/model"
-	userModel "kun-galgame-api/internal/user/model"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // TopicRepository owns the core topic lifecycle: single-row CRUD, daily-limit
@@ -113,14 +111,6 @@ func (r *TopicRepository) FindByIDTx(tx *gorm.DB, topicID int) (*model.Topic, er
 	var topic model.Topic
 	err := tx.First(&topic, topicID).Error
 	return &topic, err
-}
-
-// LockUserForUpdate acquires a SELECT ... FOR UPDATE lock on the user row.
-func (r *TopicRepository) LockUserForUpdate(tx *gorm.DB, userID int) (*userModel.User, error) {
-	var user userModel.User
-	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-		First(&user, userID).Error
-	return &user, err
 }
 
 // CreateTopic inserts a Topic row inside the caller tx.

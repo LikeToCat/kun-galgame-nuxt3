@@ -216,8 +216,8 @@ func (s *UploadService) Complete(
 			"expected", entry.FileSize, "actual", actualSize, "key", entry.Key)
 	}
 
-	// Update daily upload count
-	s.db.Model(&userModel.User{}).Where("id = ?", userID).
+	// Update daily upload count on the kungal-state table (post-OAuth migration).
+	s.db.Model(&userModel.KungalUserState{}).Where("user_id = ?", userID).
 		Update("daily_toolset_upload_count", gorm.Expr("daily_toolset_upload_count + 1"))
 
 	// Clean up Redis cache

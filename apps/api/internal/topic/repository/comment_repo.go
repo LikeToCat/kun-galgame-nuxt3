@@ -50,12 +50,9 @@ func (r *CommentRepository) FindCommentsByReplyIDs(replyIDs []int) (map[int][]Co
 	var rows []CommentRow
 	err := r.db.Table("topic_comment tc").
 		Select(`tc.id, tc.topic_reply_id, tc.topic_id, tc.content,
-			tc.user_id, u1.name AS user_name, u1.avatar AS user_avatar,
-			tc.target_user_id, u2.name AS target_user_name, u2.avatar AS target_avatar,
+			tc.user_id, tc.target_user_id,
 			(SELECT COUNT(*) FROM topic_comment_like WHERE topic_comment_id = tc.id) AS like_count,
 			tc.created AS created_at`).
-		Joins(`LEFT JOIN "user" u1 ON u1.id = tc.user_id`).
-		Joins(`LEFT JOIN "user" u2 ON u2.id = tc.target_user_id`).
 		Where("tc.topic_reply_id IN ?", replyIDs).
 		Order("tc.created ASC").
 		Find(&rows).Error
@@ -130,28 +127,3 @@ func (r *CommentRepository) DeleteCommentByID(tx *gorm.DB, commentID int) error 
 	return tx.Delete(&model.TopicComment{}, commentID).Error
 }
 
-// UserBrief is the (id, name, avatar) tuple used when building comment
-// response DTOs without pulling in the user module's struct.
-type UserBrief struct {
-	ID     int    `gorm:"column:id"`
-	Name   string `gorm:"column:name"`
-	Avatar string `gorm:"column:avatar"`
-}
-
-// FindUsersByIDs batch-loads UserBriefs keyed by id. Used by CreateComment
-// to hydrate the author + target user on the response payload.
-func (r *CommentRepository) FindUsersByIDs(ids []int) map[int]UserBrief {
-	if len(ids) == 0 {
-		return map[int]UserBrief{}
-	}
-	var users []UserBrief
-	r.db.Table(`"user"`).
-		Select("id, name, avatar").
-		Where("id IN ?", ids).
-		Scan(&users)
-	out := make(map[int]UserBrief, len(users))
-	for _, u := range users {
-		out[u.ID] = u
-	}
-	return out
-}

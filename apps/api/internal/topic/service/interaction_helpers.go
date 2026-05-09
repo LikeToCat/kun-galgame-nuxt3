@@ -16,13 +16,14 @@ import (
 // transaction) so the caller controls atomicity.
 type InteractionHelpers struct{}
 
-// AdjustMoemoepoint adds `delta` to the target user's moemoepoint.
-// A no-op when userID <= 0 or delta == 0.
+// AdjustMoemoepoint adds `delta` to the target user's moemoepoint in the
+// kungal_user_state table (the OAuth-migration successor to the deleted
+// user.moemoepoint column). No-op when userID<=0 or delta==0.
 func (InteractionHelpers) AdjustMoemoepoint(tx *gorm.DB, userID int, delta int) {
 	if userID <= 0 || delta == 0 {
 		return
 	}
-	tx.Model(&userModel.User{}).Where("id = ?", userID).
+	tx.Model(&userModel.KungalUserState{}).Where("user_id = ?", userID).
 		Update("moemoepoint", gorm.Expr("moemoepoint + ?", delta))
 }
 

@@ -1,12 +1,14 @@
 package service
 
 import (
+	"context"
 	"net/url"
 
 	"kun-galgame-api/internal/website/dto"
 	"kun-galgame-api/internal/website/model"
 	"kun-galgame-api/internal/website/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"gorm.io/gorm"
 )
@@ -16,6 +18,7 @@ type WebsiteService struct {
 	categoryRepo *repository.CategoryRepository
 	tagRepo      *repository.TagRepository
 	commentRepo  *repository.CommentRepository
+	userClient   *userclient.Client
 }
 
 func NewWebsiteService(
@@ -23,12 +26,14 @@ func NewWebsiteService(
 	categoryRepo *repository.CategoryRepository,
 	tagRepo *repository.TagRepository,
 	commentRepo *repository.CommentRepository,
+	userClient *userclient.Client,
 ) *WebsiteService {
 	return &WebsiteService{
 		websiteRepo:  websiteRepo,
 		categoryRepo: categoryRepo,
 		tagRepo:      tagRepo,
 		commentRepo:  commentRepo,
+		userClient:   userClient,
 	}
 }
 
@@ -79,6 +84,7 @@ func (s *WebsiteService) Create(userID int, req *dto.CreateWebsiteRequest) *erro
 // ──────────────────────────────────────────
 
 func (s *WebsiteService) GetDetail(
+	ctx context.Context,
 	domain string,
 	currentUserID int,
 ) (*dto.WebsiteDetailResponse, *errors.AppError) {
@@ -113,17 +119,23 @@ func (s *WebsiteService) GetDetail(
 	}
 
 	detailComments := s.commentRepo.FindByWebsiteForDetail(website.ID)
-	commentList := make([]dto.WebsiteDetailComment, len(detailComments))
-	for i, cm := range detailComments {
-		commentList[i] = dto.WebsiteDetailComment{
+	uids := userclient.CollectIDs(detailComments, func(r repository.DetailCommentRow) int { return r.UserID })
+	userMap := s.userClient.Hydrate(ctx, uids)
+	commentList := make([]dto.WebsiteDetailComment, 0, len(detailComments))
+	for _, cm := range detailComments {
+		u := userMap[cm.UserID]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
+		commentList = append(commentList, dto.WebsiteDetailComment{
 			ID:      cm.ID,
 			Content: cm.Content,
 			User: dto.UserBriefCompact{
-				ID: cm.UserID, Name: cm.UserName, Avatar: cm.UserAvatar,
+				ID: u.ID, Name: u.Name, Avatar: u.Avatar,
 			},
 			Created: cm.Created,
 			Updated: cm.Updated,
-		}
+		})
 	}
 
 	isLiked, isFavorited := false, false

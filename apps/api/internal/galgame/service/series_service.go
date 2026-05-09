@@ -154,7 +154,7 @@ func (s *SeriesService) GetDetail(
 		IsNSFW:        s.enricher.HasNSFW(filtered),
 		SampleGalgame: s.enricher.Samples(filtered, 5),
 		GalgameCount:  len(filtered),
-		Galgame:       s.enricher.ToCards(filtered),
+		Galgame:       s.enricher.ToCards(ctx, filtered),
 		Created:       parsed.Created,
 		Updated:       parsed.Updated,
 	}, nil

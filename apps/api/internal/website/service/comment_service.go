@@ -1,29 +1,35 @@
 package service
 
 import (
+	"context"
+
 	"kun-galgame-api/internal/infrastructure/markdown"
 	msgService "kun-galgame-api/internal/message/service"
 	"kun-galgame-api/internal/website/dto"
 	"kun-galgame-api/internal/website/model"
 	"kun-galgame-api/internal/website/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 )
 
 type CommentService struct {
 	commentRepo *repository.CommentRepository
 	websiteRepo *repository.WebsiteRepository
 	notifier    msgService.Notifier
+	userClient  *userclient.Client
 }
 
 func NewCommentService(
 	commentRepo *repository.CommentRepository,
 	websiteRepo *repository.WebsiteRepository,
 	notifier msgService.Notifier,
+	userClient *userclient.Client,
 ) *CommentService {
 	return &CommentService{
 		commentRepo: commentRepo,
 		websiteRepo: websiteRepo,
 		notifier:    notifier,
+		userClient:  userClient,
 	}
 }
 
@@ -31,13 +37,22 @@ func NewCommentService(
 // GetComments — GET /website/:domain/comment
 // ──────────────────────────────────────────
 
-// GetComments returns the nested comment tree for a website.
-func (s *CommentService) GetComments(websiteID int) []*dto.CommentItem {
+// GetComments returns the nested comment tree for a website. Identity is
+// hydrated from OAuth via userclient since the repo no longer joins on the
+// user table; rows authored by banned users are dropped.
+func (s *CommentService) GetComments(ctx context.Context, websiteID int) []*dto.CommentItem {
 	rows := s.commentRepo.FindByWebsite(websiteID)
 
-	flat := make([]*dto.CommentItem, len(rows))
+	uids := userclient.CollectIDs(rows, func(r repository.CommentRow) int { return r.UserID })
+	userMap := s.userClient.Hydrate(ctx, uids)
+
+	flat := make([]*dto.CommentItem, 0, len(rows))
 	idMap := make(map[int]*dto.CommentItem, len(rows))
-	for i, r := range rows {
+	for _, r := range rows {
+		u := userMap[r.UserID]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
 		item := &dto.CommentItem{
 			ID:        r.ID,
 			Content:   r.Content,
@@ -48,11 +63,11 @@ func (s *CommentService) GetComments(websiteID int) []*dto.CommentItem {
 			Edited:    r.Edited,
 			Reply:     []*dto.CommentItem{},
 			User: dto.CommentUser{
-				ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar,
+				ID: u.ID, Name: u.Name, Avatar: u.Avatar,
 			},
 			TargetUser: nil,
 		}
-		flat[i] = item
+		flat = append(flat, item)
 		idMap[r.ID] = item
 	}
 

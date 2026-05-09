@@ -127,7 +127,7 @@ func (h *RatingHandler) CreateComment(c *fiber.Ctx) error {
 	if appErr := utils.ParseAndValidate(c, &req); appErr != nil {
 		return response.Error(c, appErr)
 	}
-	created, appErr := h.ratingService.CreateRatingComment(user.UID, &req)
+	created, appErr := h.ratingService.CreateRatingComment(c.Context(), user.UID, &req)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
@@ -144,7 +144,7 @@ func (h *RatingHandler) UpdateComment(c *fiber.Ctx) error {
 	if appErr := utils.ParseAndValidate(c, &req); appErr != nil {
 		return response.Error(c, appErr)
 	}
-	updated, appErr := h.ratingService.UpdateRatingComment(user.UID, &req)
+	updated, appErr := h.ratingService.UpdateRatingComment(c.Context(), user.UID, &req)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}

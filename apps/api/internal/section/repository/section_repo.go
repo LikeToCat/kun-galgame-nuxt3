@@ -29,8 +29,6 @@ type SectionTopicRow struct {
 	IsNSFW       bool
 	BestAnswerID *int
 	UserID       int
-	UserName     string
-	UserAvatar   string
 	Created      time.Time
 }
 
@@ -58,9 +56,7 @@ func (r *SectionRepository) FindSectionTopics(
 	query := r.db.Table("topic t").
 		Select(`t.id, t.title, SUBSTRING(t.content, 1, 233) AS content,
 			t.view, t.like_count, t.reply_count, t.status, t.is_nsfw,
-			t.best_answer_id, t.user_id,
-			u.name AS user_name, u.avatar AS user_avatar, t.created`).
-		Joins(`LEFT JOIN "user" u ON u.id = t.user_id`).
+			t.best_answer_id, t.user_id, t.created`).
 		Joins("JOIN topic_section_relation tsr ON tsr.topic_id = t.id").
 		Joins("JOIN topic_section ts ON ts.id = tsr.topic_section_id").
 		Where("ts.name = ? AND t.status != 1", section)

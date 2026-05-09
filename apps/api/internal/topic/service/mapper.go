@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"time"
 
 	"kun-galgame-api/internal/infrastructure/markdown"
@@ -8,6 +9,7 @@ import (
 	"kun-galgame-api/internal/topic/dto"
 	topicModel "kun-galgame-api/internal/topic/model"
 	"kun-galgame-api/internal/topic/repository"
+	"kun-galgame-api/pkg/userclient"
 )
 
 // ──────────────────────────────────────────
@@ -17,7 +19,8 @@ import (
 // buildPollResponse assembles a TopicPollResponse from a poll model and the
 // associated option/voter data loaded via the repository. It does not perform
 // any DB writes; callers pass in the logged-in user context via uid/role.
-func (s *PollService) buildPollResponse(poll *topicModel.TopicPoll, uid, role int) dto.TopicPollResponse {
+// Identity for voters/creator is hydrated from OAuth via userclient.
+func (s *PollService) buildPollResponse(ctx context.Context, poll *topicModel.TopicPoll, uid, role int) dto.TopicPollResponse {
 	options, _ := s.pollRepo.FindOptionsByPollID(poll.ID)
 	hasVoted, _ := s.pollRepo.HasUserVoted(poll.ID, uid)
 	canView := canViewResults(poll, uid, role, hasVoted)
@@ -51,7 +54,16 @@ func (s *PollService) buildPollResponse(poll *topicModel.TopicPoll, uid, role in
 	var totalVoteCount *int
 	if canView {
 		if !poll.IsAnonymous {
-			voters, _ = s.pollRepo.FindDistinctVoters(poll.ID, 5)
+			voterIDs, _ := s.pollRepo.FindDistinctVoterIDs(poll.ID, 5)
+			vmap := s.userClient.Hydrate(ctx, voterIDs)
+			voters = make([]dto.KunUser, 0, len(voterIDs))
+			for _, id := range voterIDs {
+				u := vmap[id]
+				if !userclient.IsRenderable(u) {
+					continue
+				}
+				voters = append(voters, dto.KunUser{ID: u.ID, Name: u.Name, Avatar: u.Avatar})
+			}
 		}
 		vc, _ := s.pollRepo.CountDistinctVoters(poll.ID)
 		votersCount = vc
@@ -62,7 +74,10 @@ func (s *PollService) buildPollResponse(poll *topicModel.TopicPoll, uid, role in
 		voters = []dto.KunUser{}
 	}
 
-	creator, _ := s.pollRepo.FindUserBrief(poll.UserID)
+	creatorU, _, _ := s.userClient.User(ctx, poll.UserID)
+	if creatorU.ID == 0 {
+		creatorU = userclient.Placeholder(poll.UserID)
+	}
 
 	return dto.TopicPollResponse{
 		ID: poll.ID, Title: poll.Title, Description: poll.Description,
@@ -71,7 +86,8 @@ func (s *PollService) buildPollResponse(poll *topicModel.TopicPoll, uid, role in
 		ResultVisibility: poll.ResultVisibility,
 		IsAnonymous:      poll.IsAnonymous, CanChangeVote: poll.CanChangeVote,
 		TopicID: poll.TopicID, Created: poll.CreatedAt, Updated: poll.UpdatedAt,
-		User: creator, Options: optionResponses,
+		User:    dto.KunUser{ID: creatorU.ID, Name: creatorU.Name, Avatar: creatorU.Avatar},
+		Options: optionResponses,
 		HasVoted: hasVoted, Voters: voters,
 		VotersCount: votersCount, VoteCount: totalVoteCount,
 	}
@@ -103,8 +119,11 @@ func canViewResults(poll *topicModel.TopicPoll, uid, role int, hasVoted bool) bo
 // ──────────────────────────────────────────
 
 // buildReplyResponses turns a batch of ReplyRow into TopicReplyResponse DTOs.
-// Fetches targets/comments/like-status via the repository in bulk.
+// Fetches targets/comments/like-status via the repository in bulk. Identity
+// (name/avatar/moemoepoint) is hydrated from OAuth+kungal_user_state since
+// the repo no longer joins on the user table.
 func (s *ReplyService) buildReplyResponses(
+	ctx context.Context,
 	rows []repository.ReplyRow,
 	topic *topicModel.Topic,
 	userInfo *middleware.UserInfo,
@@ -136,8 +155,55 @@ func (s *ReplyService) buildReplyResponses(
 		commentLikeMap, _ = s.commentRepo.FindCommentLikeStatus(userInfo.UID, commentIDs)
 	}
 
-	responses := make([]dto.TopicReplyResponse, len(rows))
-	for i, r := range rows {
+	// Collect every uid we'll render: reply authors + target authors + comment
+	// authors + comment target authors. Hydrate in one batch.
+	uidSet := make(map[int]struct{})
+	for _, r := range rows {
+		uidSet[r.UserID] = struct{}{}
+	}
+	for _, ts := range targetMap {
+		for _, t := range ts {
+			uidSet[t.TargetUserID] = struct{}{}
+		}
+	}
+	for _, cs := range commentMap {
+		for _, c := range cs {
+			uidSet[c.UserID] = struct{}{}
+			if c.TargetUserID > 0 {
+				uidSet[c.TargetUserID] = struct{}{}
+			}
+		}
+	}
+	uids := make([]int, 0, len(uidSet))
+	for id := range uidSet {
+		if id > 0 {
+			uids = append(uids, id)
+		}
+	}
+	userMap := s.userClient.Hydrate(ctx, uids)
+
+	// moemoepoint comes from kungal_user_state, not OAuth.
+	moeMap := make(map[int]int, len(rows))
+	for _, r := range rows {
+		if _, seen := moeMap[r.UserID]; seen {
+			continue
+		}
+		if state, _ := s.stateRepo.FindByID(r.UserID); state != nil {
+			moeMap[r.UserID] = state.Moemoepoint
+		}
+	}
+
+	kunUser := func(id int) dto.KunUser {
+		u := userMap[id]
+		return dto.KunUser{ID: u.ID, Name: u.Name, Avatar: u.Avatar}
+	}
+
+	responses := make([]dto.TopicReplyResponse, 0, len(rows))
+	for _, r := range rows {
+		// Drop banned authors entirely.
+		if u, ok := userMap[r.UserID]; ok && !userclient.IsRenderable(u) {
+			continue
+		}
 		var targets []dto.ReplyTargetResponse
 		if ts, ok := targetMap[r.ID]; ok {
 			for _, t := range ts {
@@ -145,7 +211,7 @@ func (s *ReplyService) buildReplyResponses(
 				targets = append(targets, dto.ReplyTargetResponse{
 					ID:                   t.TargetReplyID,
 					Floor:                t.TargetFloor,
-					User:                 dto.KunUser{ID: t.TargetUserID, Name: t.TargetUserName, Avatar: t.TargetUserAvatar},
+					User:                 kunUser(t.TargetUserID),
 					ContentPreview:       preview,
 					ReplyContentMarkdown: t.Content,
 					ReplyContentHtml:     markdown.Render(t.Content),
@@ -167,8 +233,8 @@ func (s *ReplyService) buildReplyResponses(
 					ID:         c.ID,
 					ReplyID:    c.TopicReplyID,
 					TopicID:    c.TopicID,
-					User:       dto.KunUser{ID: c.UserID, Name: c.UserName, Avatar: c.UserAvatar},
-					TargetUser: dto.KunUser{ID: c.TargetUserID, Name: c.TargetUserName, Avatar: c.TargetAvatar},
+					User:       kunUser(c.UserID),
+					TargetUser: kunUser(c.TargetUserID),
 					Content:    c.Content,
 					IsLiked:    isLiked,
 					LikeCount:  c.LikeCount,
@@ -183,13 +249,16 @@ func (s *ReplyService) buildReplyResponses(
 		isPinned := topic != nil && topic.PinnedReplyID != nil && *topic.PinnedReplyID == r.ID
 		isBestAnswer := topic != nil && topic.BestAnswerID != nil && *topic.BestAnswerID == r.ID
 
-		responses[i] = dto.TopicReplyResponse{
+		author := userMap[r.UserID]
+		responses = append(responses, dto.TopicReplyResponse{
 			ID:      r.ID,
 			TopicID: r.TopicID,
 			Floor:   r.Floor,
 			User: dto.KunUserWithMoemoepoint{
-				ID: r.UserID, Name: r.UserName,
-				Avatar: r.UserAvatar, Moemoepoint: r.UserMoemoepoint,
+				ID:          author.ID,
+				Name:        author.Name,
+				Avatar:      author.Avatar,
+				Moemoepoint: moeMap[r.UserID],
 			},
 			Edited:          r.Edited,
 			ContentMarkdown: r.Content,
@@ -203,7 +272,7 @@ func (s *ReplyService) buildReplyResponses(
 			IsPinned:        isPinned,
 			IsBestAnswer:    isBestAnswer,
 			Created:         r.CreatedAt,
-		}
+		})
 	}
 	return responses
 }

@@ -9,6 +9,7 @@ import (
 	"kun-galgame-api/internal/galgame/dto"
 	"kun-galgame-api/internal/galgame/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 )
 
 // WikiService handles pass-through proxying to the wiki service and the
@@ -16,13 +17,15 @@ import (
 type WikiService struct {
 	wikiClient  *client.GalgameClient
 	galgameRepo *repository.GalgameRepository
+	userClient  *userclient.Client
 }
 
 func NewWikiService(
 	wikiClient *client.GalgameClient,
 	galgameRepo *repository.GalgameRepository,
+	userClient *userclient.Client,
 ) *WikiService {
-	return &WikiService{wikiClient: wikiClient, galgameRepo: galgameRepo}
+	return &WikiService{wikiClient: wikiClient, galgameRepo: galgameRepo, userClient: userClient}
 }
 
 // ──────────────────────────────────────────
@@ -97,7 +100,7 @@ func (s *WikiService) GetGalgameLinks(
 	for i, r := range rows {
 		ids[i] = r.UserID
 	}
-	userMap := s.galgameRepo.FindUsersByIDs(ids)
+	userMap := s.userClient.Hydrate(ctx, ids)
 
 	out := make([]dto.GalgameLink, len(rows))
 	for i, r := range rows {
@@ -152,7 +155,7 @@ func (s *WikiService) GetGalgameHistory(
 	for i, r := range parsed.Items {
 		ids[i] = r.UserID
 	}
-	userMap := s.galgameRepo.FindUsersByIDs(ids)
+	userMap := s.userClient.Hydrate(ctx, ids)
 
 	items := make([]dto.GalgameRevision, len(parsed.Items))
 	for i, r := range parsed.Items {
@@ -209,7 +212,7 @@ func (s *WikiService) GetGalgamePRs(
 	for i, r := range parsed.Items {
 		ids[i] = r.UserID
 	}
-	userMap := s.galgameRepo.FindUsersByIDs(ids)
+	userMap := s.userClient.Hydrate(ctx, ids)
 
 	items := make([]dto.GalgamePR, len(parsed.Items))
 	for i, r := range parsed.Items {

@@ -21,27 +21,21 @@ type GalgameLocalRow struct {
 	Value int `gorm:"column:value"`
 }
 
+// TopicRankingRow returns a topic ranking row. Identity is hydrated by the
+// service layer via userclient.
 type TopicRankingRow struct {
-	ID         int    `gorm:"column:id"`
-	Title      string `gorm:"column:title"`
-	UserID     int    `gorm:"column:user_id"`
-	UserName   string `gorm:"column:user_name"`
-	UserAvatar string `gorm:"column:user_avatar"`
-	Value      int    `gorm:"column:value"`
-}
-
-type UserRankingRow struct {
-	ID     int    `gorm:"column:id" json:"id"`
-	Name   string `gorm:"column:name" json:"name"`
-	Avatar string `gorm:"column:avatar" json:"avatar"`
-	Bio    string `gorm:"column:bio" json:"bio"`
-	Value  int    `gorm:"column:value" json:"value"`
-}
-
-type UserInfoRow struct {
 	ID     int    `gorm:"column:id"`
-	Name   string `gorm:"column:name"`
-	Avatar string `gorm:"column:avatar"`
+	Title  string `gorm:"column:title"`
+	UserID int    `gorm:"column:user_id"`
+	Value  int    `gorm:"column:value"`
+}
+
+// UserRankingRow returns a user ranking row keyed by user_id. Sorting fields
+// (e.g. moemoepoint) live in kungal_user_state. Identity (name/avatar/bio) is
+// hydrated by the service layer via userclient.
+type UserRankingRow struct {
+	UserID int `gorm:"column:user_id"`
+	Value  int `gorm:"column:value"`
 }
 
 // ──────────────────────────────────────────
@@ -61,24 +55,12 @@ func (r *RankingRepository) FindGalgameLocal(sortField, sortOrder string, page, 
 	return rows
 }
 
-// FindUsersByIDs fetches name + avatar for the given user IDs.
-func (r *RankingRepository) FindUsersByIDs(ids []int) []UserInfoRow {
-	if len(ids) == 0 {
-		return nil
-	}
-	var users []UserInfoRow
-	r.db.Table(`"user"`).Select("id, name, avatar").
-		Where("id IN ?", ids).Scan(&users)
-	return users
-}
-
-// FindTopicRanking returns topic ranking rows with user info joined.
+// FindTopicRanking returns topic ranking rows. Identity is hydrated at the
+// service layer.
 func (r *RankingRepository) FindTopicRanking(sortField, sortOrder string, page, limit int) []TopicRankingRow {
 	var rows []TopicRankingRow
 	r.db.Table("topic t").
-		Select(`t.id, t.title, t.user_id, u.name AS user_name, u.avatar AS user_avatar,
-			t.`+sortField+` AS value`).
-		Joins(`LEFT JOIN "user" u ON u.id = t.user_id`).
+		Select(`t.id, t.title, t.user_id, t.` + sortField + ` AS value`).
 		Where("t.status != 1").
 		Order("t." + sortField + " " + sortOrder).
 		Offset((page - 1) * limit).Limit(limit).
@@ -86,12 +68,14 @@ func (r *RankingRepository) FindTopicRanking(sortField, sortOrder string, page, 
 	return rows
 }
 
-// FindUserRanking returns user ranking rows.
+// FindUserRanking returns user ranking rows ordered by a kungal_user_state
+// column (currently only moemoepoint). Identity (name/avatar/bio) is hydrated
+// at the service layer via userclient since the user table is no longer the
+// source of truth.
 func (r *RankingRepository) FindUserRanking(sortField, sortOrder string, page, limit int) []UserRankingRow {
 	var rows []UserRankingRow
-	r.db.Table(`"user"`).
-		Select(`id, name, avatar, bio, ` + sortField + ` AS value`).
-		Where("status != 1").
+	r.db.Table("kungal_user_state").
+		Select(`user_id, ` + sortField + ` AS value`).
 		Order(sortField + " " + sortOrder).
 		Offset((page - 1) * limit).Limit(limit).
 		Find(&rows)

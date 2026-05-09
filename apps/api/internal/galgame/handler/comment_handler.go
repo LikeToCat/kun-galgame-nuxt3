@@ -32,7 +32,7 @@ func (h *CommentHandler) GetComments(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	result := h.commentService.GetComments(gid, req.Page, req.Limit)
+	result := h.commentService.GetComments(c.Context(), gid, req.Page, req.Limit)
 	return response.Paginated(c, result.Items, result.Total)
 }
 
@@ -54,7 +54,7 @@ func (h *CommentHandler) CreateComment(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	resp, appErr := h.commentService.CreateComment(user.UID, gid, req.Content, req.TargetUserID)
+	resp, appErr := h.commentService.CreateComment(c.Context(), user.UID, gid, req.Content, req.TargetUserID)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}

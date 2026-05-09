@@ -32,12 +32,11 @@ type RoomListRow struct {
 	LastMessageTime    *string `gorm:"column:last_message_time"`
 }
 
-// ParticipantRow is a row from chat_room_participant joined with user.
+// ParticipantRow is a row from chat_room_participant. Identity (name/avatar)
+// is hydrated by the service layer via userclient.
 type ParticipantRow struct {
-	ChatRoomID int    `gorm:"column:chat_room_id"`
-	UserID     int    `gorm:"column:user_id"`
-	UserName   string `gorm:"column:user_name"`
-	UserAvatar string `gorm:"column:user_avatar"`
+	ChatRoomID int `gorm:"column:chat_room_id"`
+	UserID     int `gorm:"column:user_id"`
 }
 
 // CountRow holds a per-room count (unread or total).
@@ -52,13 +51,12 @@ type RoomRef struct {
 	Name string `gorm:"column:name"`
 }
 
-// ChatMessageRow is a joined chat_message row with sender user info.
+// ChatMessageRow is a chat_message row. Identity (sender name/avatar) is
+// hydrated by the service layer via userclient.
 type ChatMessageRow struct {
 	ID           int     `gorm:"column:id"`
 	ChatroomName string  `gorm:"column:chatroom_name"`
 	SenderID     int     `gorm:"column:sender_id"`
-	SenderName   string  `gorm:"column:sender_name"`
-	SenderAvatar string  `gorm:"column:sender_avatar"`
 	ReceiverID   int     `gorm:"column:receiver_id"`
 	Content      string  `gorm:"column:content"`
 	IsRecall     bool    `gorm:"column:is_recall"`
@@ -85,13 +83,12 @@ func (r *ChatRepository) FindRoomsForUser(uid int) ([]RoomListRow, error) {
 	return rooms, err
 }
 
-// FindParticipantsByRoomIDs returns all participants for the given room IDs,
-// each joined with user name + avatar.
+// FindParticipantsByRoomIDs returns all participants for the given room IDs.
+// Identity (name/avatar) is hydrated by the service layer via userclient.
 func (r *ChatRepository) FindParticipantsByRoomIDs(roomIDs []int) []ParticipantRow {
 	var rows []ParticipantRow
 	r.db.Table("chat_room_participant p").
-		Select("p.chat_room_id, p.user_id, u.name AS user_name, u.avatar AS user_avatar").
-		Joins(`LEFT JOIN "user" u ON u.id = p.user_id`).
+		Select("p.chat_room_id, p.user_id").
 		Where("p.chat_room_id IN ?", roomIDs).
 		Scan(&rows)
 	return rows
@@ -171,10 +168,8 @@ func (r *ChatRepository) FindMessagesByRoom(roomID int, roomName string, page, l
 	offset := (page - 1) * limit
 	r.db.Table("chat_message cm").
 		Select(`cm.id, cm.chatroom_name, cm.sender_id,
-			u.name AS sender_name, u.avatar AS sender_avatar,
 			cm.receiver_id, cm.content, cm.is_recall,
 			cm.created, cm.recall_time, cm.edit_time`).
-		Joins(`LEFT JOIN "user" u ON u.id = cm.sender_id`).
 		Where("cm.chat_room_id = ? OR cm.chatroom_name = ?", roomID, roomName).
 		Order("cm.id DESC").
 		Offset(offset).Limit(limit).
@@ -184,13 +179,13 @@ func (r *ChatRepository) FindMessagesByRoom(roomID int, roomName string, page, l
 
 // MessageHeader is the slim projection used to validate a recall request:
 // who sent the message, in what room, and whether it's already recalled.
+// Sender name is hydrated by the service layer via userclient.
 type MessageHeader struct {
 	ID           int
-	ChatRoomID   int   `gorm:"column:chat_room_id"`
+	ChatRoomID   int    `gorm:"column:chat_room_id"`
 	ChatroomName string `gorm:"column:chatroom_name"`
-	SenderID     int   `gorm:"column:sender_id"`
-	SenderName   string `gorm:"column:sender_name"`
-	IsRecall     bool  `gorm:"column:is_recall"`
+	SenderID     int    `gorm:"column:sender_id"`
+	IsRecall     bool   `gorm:"column:is_recall"`
 }
 
 // FindMessageHeader loads the header projection for a chat message.
@@ -198,9 +193,7 @@ type MessageHeader struct {
 func (r *ChatRepository) FindMessageHeader(id int) (MessageHeader, bool) {
 	var h MessageHeader
 	err := r.db.Table("chat_message m").
-		Select(`m.id, m.chat_room_id, m.chatroom_name, m.sender_id, m.is_recall,
-			u.name AS sender_name`).
-		Joins(`LEFT JOIN "user" u ON u.id = m.sender_id`).
+		Select(`m.id, m.chat_room_id, m.chatroom_name, m.sender_id, m.is_recall`).
 		Where("m.id = ?", id).
 		Scan(&h).Error
 	if err != nil || h.ID == 0 {

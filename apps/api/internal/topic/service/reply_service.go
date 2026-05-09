@@ -12,7 +12,9 @@ import (
 	"kun-galgame-api/internal/topic/dto"
 	topicModel "kun-galgame-api/internal/topic/model"
 	"kun-galgame-api/internal/topic/repository"
+	userRepo "kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -22,6 +24,8 @@ type ReplyService struct {
 	replyRepo   *repository.ReplyRepository
 	commentRepo *repository.CommentRepository
 	topicRepo   *repository.TopicRepository
+	stateRepo   *userRepo.StateRepository
+	userClient  *userclient.Client
 	rdb         *redis.Client
 	helpers     InteractionHelpers
 }
@@ -30,12 +34,16 @@ func NewReplyService(
 	replyRepo *repository.ReplyRepository,
 	commentRepo *repository.CommentRepository,
 	topicRepo *repository.TopicRepository,
+	stateRepo *userRepo.StateRepository,
+	userClient *userclient.Client,
 	rdb *redis.Client,
 ) *ReplyService {
 	return &ReplyService{
 		replyRepo:   replyRepo,
 		commentRepo: commentRepo,
 		topicRepo:   topicRepo,
+		stateRepo:   stateRepo,
+		userClient:  userClient,
 		rdb:         rdb,
 	}
 }
@@ -68,7 +76,7 @@ func (s *ReplyService) GetReplies(
 	// On page 1, prepend special replies
 	if req.Page == 1 && len(specialIDs) > 0 {
 		if specialRows, err := s.replyRepo.FindRepliesByIDs(specialIDs); err == nil {
-			result = append(result, s.buildReplyResponses(specialRows, topic, userInfo)...)
+			result = append(result, s.buildReplyResponses(ctx, specialRows, topic, userInfo)...)
 		}
 	}
 
@@ -80,7 +88,7 @@ func (s *ReplyService) GetReplies(
 		return nil, errors.ErrInternal("获取回复列表失败")
 	}
 
-	result = append(result, s.buildReplyResponses(regularRows, topic, userInfo)...)
+	result = append(result, s.buildReplyResponses(ctx, regularRows, topic, userInfo)...)
 
 	if result == nil {
 		result = []dto.TopicReplyResponse{}
@@ -103,7 +111,7 @@ func (s *ReplyService) GetReplyDetail(
 	}
 
 	topic, _ := s.topicRepo.FindByID(rows[0].TopicID)
-	responses := s.buildReplyResponses(rows, topic, userInfo)
+	responses := s.buildReplyResponses(ctx, rows, topic, userInfo)
 	if len(responses) == 0 {
 		return nil, errors.ErrNotFound("未找到该回复")
 	}
@@ -201,7 +209,7 @@ func (s *ReplyService) CreateReply(
 	if len(rows) == 0 {
 		return nil, errors.ErrInternal("创建回复失败")
 	}
-	responses := s.buildReplyResponses(rows, topic, nil)
+	responses := s.buildReplyResponses(ctx, rows, topic, nil)
 	return &responses[0], nil
 }
 
@@ -281,11 +289,11 @@ func (s *ReplyService) DeleteReply(
 	}
 
 	txErr := s.replyRepo.DB().Transaction(func(tx *gorm.DB) error {
-		user, err := s.replyRepo.LockUserForUpdate(tx, reply.UserID)
+		state, err := s.stateRepo.LockForUpdate(tx, reply.UserID)
 		if err != nil {
 			return err
 		}
-		if user.Moemoepoint < penalty {
+		if state.Moemoepoint < penalty {
 			return gorm.ErrCheckConstraintViolated
 		}
 

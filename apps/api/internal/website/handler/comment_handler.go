@@ -25,7 +25,7 @@ func (h *CommentHandler) GetComments(c *fiber.Ctx) error {
 	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
 		return response.Error(c, appErr)
 	}
-	return response.OK(c, h.commentService.GetComments(req.WebsiteID))
+	return response.OK(c, h.commentService.GetComments(c.Context(), req.WebsiteID))
 }
 
 // CreateComment creates a website comment.

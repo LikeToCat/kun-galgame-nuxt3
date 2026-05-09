@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"kun-galgame-api/internal/galgame/model"
-	userModel "kun-galgame-api/internal/user/model"
 
 	"gorm.io/gorm"
 )
@@ -48,16 +47,13 @@ func (r *RatingRepository) FindLikerIDs(ratingID int) []int {
 	return out
 }
 
-// FindComments returns comments on a rating, joined with user info, oldest first.
+// FindComments returns comments on a rating, oldest first. Identity is
+// hydrated at the service layer via userclient.
 func (r *RatingRepository) FindComments(ratingID int) []model.RatingCommentRow {
 	var rows []model.RatingCommentRow
 	r.db.Table("galgame_rating_comment c").
 		Select(`c.id, c.content, c.user_id, c.target_user_id,
-			u1.name AS user_name, u1.avatar AS user_avatar,
-			u2.name AS target_name, u2.avatar AS target_avatar,
 			c.created, c.updated`).
-		Joins(`LEFT JOIN "user" u1 ON u1.id = c.user_id`).
-		Joins(`LEFT JOIN "user" u2 ON u2.id = c.target_user_id`).
 		Where("c.galgame_rating_id = ?", ratingID).
 		Order("c.created ASC").
 		Scan(&rows)
@@ -113,43 +109,6 @@ func (r *RatingRepository) ListPaginated(f model.RatingFilter) ([]model.GalgameR
 		Offset((f.Page - 1) * f.Limit).Limit(f.Limit).
 		Scan(&rows)
 	return rows, total
-}
-
-// ──────────────────────────────────────────
-// Users
-// ──────────────────────────────────────────
-
-// FindUsersByIDs batch-loads user brief info.
-func (r *RatingRepository) FindUsersByIDs(ids []int) map[int]userModel.UserBrief {
-	if len(ids) == 0 {
-		return map[int]userModel.UserBrief{}
-	}
-	var users []userModel.UserBrief
-	r.db.Where("id IN ?", ids).Find(&users)
-	out := make(map[int]userModel.UserBrief, len(users))
-	for _, u := range users {
-		out[u.ID] = u
-	}
-	return out
-}
-
-// FindUsersListByIDs returns users preserving input order semantics (by ID list).
-func (r *RatingRepository) FindUsersListByIDs(ids []int) []userModel.UserBrief {
-	if len(ids) == 0 {
-		return []userModel.UserBrief{}
-	}
-	var users []userModel.UserBrief
-	r.db.Where("id IN ?", ids).Find(&users)
-	return users
-}
-
-// FindUserByID is a single-row brief lookup.
-func (r *RatingRepository) FindUserByID(id int) (userModel.UserBrief, bool) {
-	var u userModel.UserBrief
-	if err := r.db.Where("id = ?", id).First(&u).Error; err != nil {
-		return u, false
-	}
-	return u, true
 }
 
 // ──────────────────────────────────────────

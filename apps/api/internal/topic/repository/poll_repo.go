@@ -3,7 +3,6 @@ package repository
 import (
 	"time"
 
-	"kun-galgame-api/internal/topic/dto"
 	"kun-galgame-api/internal/topic/model"
 
 	"gorm.io/gorm"
@@ -61,15 +60,16 @@ func (r *PollRepository) HasUserVoted(pollID, userID int) (bool, error) {
 	return count > 0, err
 }
 
-func (r *PollRepository) FindDistinctVoters(pollID, limit int) ([]dto.KunUser, error) {
-	var voters []dto.KunUser
+// FindDistinctVoterIDs returns up to `limit` distinct user IDs that have voted
+// on the poll. Identity is hydrated by the service layer via userclient.
+func (r *PollRepository) FindDistinctVoterIDs(pollID, limit int) ([]int, error) {
+	var ids []int
 	err := r.db.Table("topic_poll_vote").
-		Select(`DISTINCT ON ("user".id) "user".id, "user".name, "user".avatar`).
-		Joins(`JOIN "user" ON "user".id = topic_poll_vote.user_id`).
-		Where("topic_poll_vote.poll_id = ?", pollID).
+		Distinct("user_id").
+		Where("poll_id = ?", pollID).
 		Limit(limit).
-		Find(&voters).Error
-	return voters, err
+		Pluck("user_id", &ids).Error
+	return ids, err
 }
 
 func (r *PollRepository) CountDistinctVoters(pollID int) (int, error) {
@@ -96,8 +96,6 @@ func (r *PollRepository) CountTotalVotes(pollID int) (int, error) {
 type VoteLogRow struct {
 	ID         int
 	UserID     int
-	UserName   string
-	UserAvatar string
 	OptionText string
 	CreatedAt  time.Time
 }
@@ -109,9 +107,8 @@ func (r *PollRepository) FindVoteLogs(pollID, page, limit int) ([]VoteLogRow, in
 	r.db.Model(&model.TopicPollVote{}).Where("poll_id = ?", pollID).Count(&total)
 
 	err := r.db.Table("topic_poll_vote v").
-		Select(`v.id, v.user_id, "user".name AS user_name, "user".avatar AS user_avatar,
+		Select(`v.id, v.user_id,
 			o.text AS option_text, v.created AS created_at`).
-		Joins(`JOIN "user" ON "user".id = v.user_id`).
 		Joins("JOIN topic_poll_option o ON o.id = v.option_id").
 		Where("v.poll_id = ?", pollID).
 		Order("v.created DESC").
@@ -169,16 +166,6 @@ func (r *PollRepository) DeletePollCascade(tx *gorm.DB, pollID int) error {
 		return err
 	}
 	return tx.Delete(&model.TopicPoll{}, pollID).Error
-}
-
-// FindUserBrief loads a minimal user row (id, name, avatar) used when building
-// poll creator / voter DTOs. Duplicated in the topic module to avoid a
-// cross-module repo dependency for a tiny lookup.
-func (r *PollRepository) FindUserBrief(userID int) (dto.KunUser, error) {
-	var u dto.KunUser
-	err := r.db.Table(`"user"`).Select("id, name, avatar").
-		Where("id = ?", userID).Scan(&u).Error
-	return u, err
 }
 
 // UpdatePollFields patches poll scalar columns inside a tx.

@@ -9,6 +9,7 @@ import (
 	"kun-galgame-api/internal/topic/dto"
 	topicModel "kun-galgame-api/internal/topic/model"
 	"kun-galgame-api/internal/topic/repository"
+	userRepo "kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
 
 	"github.com/redis/go-redis/v9"
@@ -19,6 +20,7 @@ type TopicWriteService struct {
 	topicRepo    *repository.TopicRepository
 	taxonomyRepo *repository.TopicTaxonomyRepository
 	replyRepo    *repository.ReplyRepository
+	stateRepo    *userRepo.StateRepository
 	rdb          *redis.Client
 	notifier     msgService.Notifier
 	helpers      InteractionHelpers
@@ -28,6 +30,7 @@ func NewTopicWriteService(
 	topicRepo *repository.TopicRepository,
 	taxonomyRepo *repository.TopicTaxonomyRepository,
 	replyRepo *repository.ReplyRepository,
+	stateRepo *userRepo.StateRepository,
 	rdb *redis.Client,
 	notifier msgService.Notifier,
 ) *TopicWriteService {
@@ -35,6 +38,7 @@ func NewTopicWriteService(
 		topicRepo:    topicRepo,
 		taxonomyRepo: taxonomyRepo,
 		replyRepo:    replyRepo,
+		stateRepo:    stateRepo,
 		rdb:          rdb,
 		notifier:     notifier,
 	}
@@ -60,7 +64,7 @@ func (s *TopicWriteService) Create(
 	var newTopicID int
 
 	err := s.topicRepo.DB().Transaction(func(tx *gorm.DB) error {
-		user, err := s.topicRepo.LockUserForUpdate(tx, uid)
+		state, err := s.stateRepo.LockForUpdate(tx, uid)
 		if err != nil {
 			return err
 		}
@@ -69,12 +73,12 @@ func (s *TopicWriteService) Create(
 		if err != nil {
 			return err
 		}
-		dailyLimit := int64(user.Moemoepoint/10 + 1)
+		dailyLimit := int64(state.Moemoepoint/10 + 1)
 		if todayCount >= dailyLimit {
 			return gorm.ErrInvalidData
 		}
 
-		if hasConsumeSection && user.Moemoepoint < constants.CostConsumeSection {
+		if hasConsumeSection && state.Moemoepoint < constants.CostConsumeSection {
 			return gorm.ErrInvalidData
 		}
 
@@ -293,11 +297,11 @@ func (s *TopicWriteService) Upvote(ctx context.Context, uid, topicID int) *error
 			return gorm.ErrInvalidData
 		}
 
-		user, err := s.topicRepo.LockUserForUpdate(tx, uid)
+		state, err := s.stateRepo.LockForUpdate(tx, uid)
 		if err != nil {
 			return err
 		}
-		if user.Moemoepoint < constants.CostUpvoteSender {
+		if state.Moemoepoint < constants.CostUpvoteSender {
 			return gorm.ErrCheckConstraintViolated
 		}
 

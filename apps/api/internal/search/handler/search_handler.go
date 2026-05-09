@@ -27,7 +27,7 @@ func (h *SearchHandler) Search(c *fiber.Ctx) error {
 
 	switch req.Type {
 	case "topic":
-		res, appErr := h.searchService.SearchTopics(req.Keywords, req.Page, req.Limit)
+		res, appErr := h.searchService.SearchTopics(c.Context(), req.Keywords, req.Page, req.Limit)
 		if appErr != nil {
 			return response.Error(c, appErr)
 		}
@@ -41,19 +41,19 @@ func (h *SearchHandler) Search(c *fiber.Ctx) error {
 		}
 		return response.Paginated(c, res.Items, res.Total)
 	case "user":
-		res, appErr := h.searchService.SearchUsers(req.Keywords, req.Page, req.Limit)
+		res, appErr := h.searchService.SearchUsers(c.Context(), req.Keywords, req.Page, req.Limit)
 		if appErr != nil {
 			return response.Error(c, appErr)
 		}
 		return response.Paginated(c, res.Items, res.Total)
 	case "reply":
-		res, appErr := h.searchService.SearchReplies(req.Keywords, req.Page, req.Limit)
+		res, appErr := h.searchService.SearchReplies(c.Context(), req.Keywords, req.Page, req.Limit)
 		if appErr != nil {
 			return response.Error(c, appErr)
 		}
 		return response.Paginated(c, res.Items, res.Total)
 	case "comment":
-		res, appErr := h.searchService.SearchComments(req.Keywords, req.Page, req.Limit)
+		res, appErr := h.searchService.SearchComments(c.Context(), req.Keywords, req.Page, req.Limit)
 		if appErr != nil {
 			return response.Error(c, appErr)
 		}

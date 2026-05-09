@@ -6,14 +6,19 @@ import (
 	"kun-galgame-api/internal/message/dto"
 	"kun-galgame-api/internal/message/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 )
 
 type MessageService struct {
 	messageRepo *repository.MessageRepository
+	userClient  *userclient.Client
 }
 
-func NewMessageService(messageRepo *repository.MessageRepository) *MessageService {
-	return &MessageService{messageRepo: messageRepo}
+func NewMessageService(
+	messageRepo *repository.MessageRepository,
+	userClient *userclient.Client,
+) *MessageService {
+	return &MessageService{messageRepo: messageRepo, userClient: userClient}
 }
 
 func (s *MessageService) GetMessages(
@@ -28,17 +33,25 @@ func (s *MessageService) GetMessages(
 		return nil, errors.ErrInternal("获取消息列表失败")
 	}
 
-	messages := make([]dto.MessageResponse, len(rows))
-	for i, r := range rows {
-		messages[i] = dto.MessageResponse{
+	uids := userclient.CollectIDs(rows, func(r repository.MessageRow) int { return r.SenderID })
+	userMap := s.userClient.Hydrate(ctx, uids)
+
+	messages := make([]dto.MessageResponse, 0, len(rows))
+	for _, r := range rows {
+		u := userMap[r.SenderID]
+		// Hide messages whose sender is banned/deleted.
+		if !userclient.IsRenderable(u) {
+			continue
+		}
+		messages = append(messages, dto.MessageResponse{
 			ID:          r.ID,
-			Sender:      dto.KunUser{ID: r.SenderID, Name: r.SenderName, Avatar: r.SenderAvatar},
+			Sender:      dto.KunUser{ID: u.ID, Name: u.Name, Avatar: u.Avatar},
 			ReceiverUID: r.ReceiverID,
 			Link:        r.Link,
 			Content:     r.Content,
 			Status:      r.Status,
 			Type:        r.Type,
-		}
+		})
 	}
 
 	return &dto.MessageListResponse{Messages: messages, TotalCount: total}, nil
@@ -64,9 +77,13 @@ func (s *MessageService) GetSystemMessages(ctx context.Context) ([]dto.SystemMes
 		return nil, errors.ErrInternal("获取系统消息失败")
 	}
 
-	messages := make([]dto.SystemMessageResponse, len(rows))
-	for i, r := range rows {
-		messages[i] = dto.SystemMessageResponse{
+	uids := userclient.CollectIDs(rows, func(r repository.SystemMessageRow) int { return r.UserID })
+	userMap := s.userClient.Hydrate(ctx, uids)
+
+	messages := make([]dto.SystemMessageResponse, 0, len(rows))
+	for _, r := range rows {
+		u := userMap[r.UserID]
+		messages = append(messages, dto.SystemMessageResponse{
 			ID:     r.ID,
 			Status: r.Status,
 			Content: map[string]string{
@@ -75,8 +92,8 @@ func (s *MessageService) GetSystemMessages(ctx context.Context) ([]dto.SystemMes
 				"zh-cn": r.ContentZhCN,
 				"zh-tw": r.ContentZhTW,
 			},
-			Admin: dto.KunUser{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
-		}
+			Admin: dto.KunUser{ID: u.ID, Name: u.Name, Avatar: u.Avatar},
+		})
 	}
 	return messages, nil
 }

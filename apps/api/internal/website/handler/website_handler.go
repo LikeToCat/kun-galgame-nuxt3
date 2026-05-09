@@ -54,7 +54,7 @@ func (h *WebsiteHandler) GetWebsiteDetail(c *fiber.Ctx) error {
 		currentUserID = u.UID
 	}
 
-	detail, appErr := h.websiteService.GetDetail(domain, currentUserID)
+	detail, appErr := h.websiteService.GetDetail(c.Context(), domain, currentUserID)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}

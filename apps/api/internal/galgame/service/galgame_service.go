@@ -12,6 +12,7 @@ import (
 	"kun-galgame-api/internal/galgame/model"
 	"kun-galgame-api/internal/galgame/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"gorm.io/gorm"
 )
@@ -19,13 +20,14 @@ import (
 // GalgameService handles the "core" galgame lifecycle: create, merge PR,
 // detail aggregation, list with filters, and local interaction toggles.
 type GalgameService struct {
-	galgameRepo       *repository.GalgameRepository
-	interactionRepo   *repository.GalgameInteractionRepository
-	listRepo          *repository.GalgameListRepository
-	resourceMetaRepo  *repository.GalgameResourceMetaRepository
-	detailRatingRepo  *repository.GalgameDetailRatingRepository
-	wikiClient        *client.GalgameClient
-	helpers           InteractionHelpers
+	galgameRepo      *repository.GalgameRepository
+	interactionRepo  *repository.GalgameInteractionRepository
+	listRepo         *repository.GalgameListRepository
+	resourceMetaRepo *repository.GalgameResourceMetaRepository
+	detailRatingRepo *repository.GalgameDetailRatingRepository
+	wikiClient       *client.GalgameClient
+	userClient       *userclient.Client
+	helpers          InteractionHelpers
 }
 
 func NewGalgameService(
@@ -35,6 +37,7 @@ func NewGalgameService(
 	resourceMetaRepo *repository.GalgameResourceMetaRepository,
 	detailRatingRepo *repository.GalgameDetailRatingRepository,
 	wikiClient *client.GalgameClient,
+	userClient *userclient.Client,
 ) *GalgameService {
 	return &GalgameService{
 		galgameRepo:      galgameRepo,
@@ -43,6 +46,7 @@ func NewGalgameService(
 		resourceMetaRepo: resourceMetaRepo,
 		detailRatingRepo: detailRatingRepo,
 		wikiClient:       wikiClient,
+		userClient:       userClient,
 	}
 }
 
@@ -215,7 +219,7 @@ func (s *GalgameService) GetDetail(
 		series = s.fetchSeriesBrief(ctx, *g.SeriesID)
 	}
 
-	ratings := s.buildDetailRatings(galgameID, currentUserID, g)
+	ratings := s.buildDetailRatings(ctx, galgameID, currentUserID, g)
 
 	detail := galgameDetailFromWiki(g, parsed.Users)
 	detail.View = local.View
@@ -272,6 +276,7 @@ func (s *GalgameService) fetchSeriesBrief(ctx context.Context, seriesID int) *dt
 
 // buildDetailRatings assembles the ratings list with user resolution and liked flag.
 func (s *GalgameService) buildDetailRatings(
+	ctx context.Context,
 	galgameID, currentUserID int,
 	g dto.WikiGalgameDetailFull,
 ) []dto.GalgameDetailRating {
@@ -286,12 +291,16 @@ func (s *GalgameService) buildDetailRatings(
 		userIDs[i] = r.UserID
 		ratingIDs[i] = r.ID
 	}
-	userMap := s.galgameRepo.FindUsersByIDs(userIDs)
+	userMap := s.userClient.Hydrate(ctx, userIDs)
 	likedSet := s.detailRatingRepo.FindLikedRatingIDs(currentUserID, ratingIDs)
 
-	out := make([]dto.GalgameDetailRating, len(rows))
-	for i, r := range rows {
-		out[i] = detailRatingFromRow(r, userMap[r.UserID], likedSet[r.ID], galgameID, g)
+	out := make([]dto.GalgameDetailRating, 0, len(rows))
+	for _, r := range rows {
+		u := userMap[r.UserID]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
+		out = append(out, detailRatingFromRow(r, u, likedSet[r.ID], galgameID, g))
 	}
 	return out
 }
@@ -332,12 +341,12 @@ func (s *GalgameService) GetList(
 		briefMap = map[int]client.GalgameBrief{}
 	}
 
-	// Users (from wiki briefs)
+	// Users (from wiki briefs) — hydrated from OAuth.
 	userIDs := make([]int, 0, len(briefMap))
 	for _, b := range briefMap {
 		userIDs = append(userIDs, b.UserID)
 	}
-	userMap := s.galgameRepo.FindUsersByIDs(userIDs)
+	userMap := s.userClient.Hydrate(ctx, userIDs)
 
 	// Local stats batch
 	localMap := s.galgameRepo.FindLocalBatch(ids)

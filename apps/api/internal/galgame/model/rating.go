@@ -86,16 +86,13 @@ type GalgameRatingRow struct {
 	GalgameID    int    `gorm:"column:galgame_id"`
 }
 
-// RatingCommentRow is a joined comment row for a rating.
+// RatingCommentRow is a comment row for a rating. Identity is hydrated by
+// the service layer via userclient.
 type RatingCommentRow struct {
 	ID           int    `gorm:"column:id"`
 	Content      string `gorm:"column:content"`
 	UserID       int    `gorm:"column:user_id"`
 	TargetUserID *int   `gorm:"column:target_user_id"`
-	UserName     string `gorm:"column:user_name"`
-	UserAvatar   string `gorm:"column:user_avatar"`
-	TargetName   string `gorm:"column:target_name"`
-	TargetAvatar string `gorm:"column:target_avatar"`
 	Created      string `gorm:"column:created"`
 	Updated      string `gorm:"column:updated"`
 }

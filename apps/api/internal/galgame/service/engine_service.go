@@ -90,7 +90,7 @@ func (s *EngineService) GetDetail(
 		Name:         e.Name,
 		Description:  e.Description,
 		Alias:        emptyStrSliceIfNil(e.Alias),
-		Galgame:      s.enricher.ToCards(filtered),
+		Galgame:      s.enricher.ToCards(ctx, filtered),
 		GalgameCount: parsed.Total,
 	}, nil
 }

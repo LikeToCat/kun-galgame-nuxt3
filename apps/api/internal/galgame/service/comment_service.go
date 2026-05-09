@@ -1,24 +1,32 @@
 package service
 
 import (
+	"context"
 	"fmt"
 
 	"kun-galgame-api/internal/galgame/model"
 	"kun-galgame-api/internal/galgame/repository"
 	msgModel "kun-galgame-api/internal/message/model"
-	userModel "kun-galgame-api/internal/user/model"
+	userRepo "kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"gorm.io/gorm"
 )
 
 type CommentService struct {
 	commentRepo *repository.CommentRepository
+	stateRepo   *userRepo.StateRepository
+	userClient  *userclient.Client
 	helpers     InteractionHelpers
 }
 
-func NewCommentService(commentRepo *repository.CommentRepository) *CommentService {
-	return &CommentService{commentRepo: commentRepo}
+func NewCommentService(
+	commentRepo *repository.CommentRepository,
+	stateRepo *userRepo.StateRepository,
+	userClient *userclient.Client,
+) *CommentService {
+	return &CommentService{commentRepo: commentRepo, stateRepo: stateRepo, userClient: userClient}
 }
 
 // ──────────────────────────────────────────
@@ -50,23 +58,42 @@ type CommentListResult struct {
 // GetComments
 // ──────────────────────────────────────────
 
-func (s *CommentService) GetComments(galgameID, page, limit int) *CommentListResult {
+func (s *CommentService) GetComments(ctx context.Context, galgameID, page, limit int) *CommentListResult {
 	total := s.commentRepo.CountByGalgame(galgameID)
 	rows := s.commentRepo.FindPaginated(galgameID, page, limit)
 
-	items := make([]CommentItem, len(rows))
-	for i, r := range rows {
+	// Collect every uid we need to render (authors + targets).
+	uidSet := make(map[int]struct{})
+	for _, r := range rows {
+		uidSet[r.UserID] = struct{}{}
+		if r.TargetUserID != nil && *r.TargetUserID > 0 {
+			uidSet[*r.TargetUserID] = struct{}{}
+		}
+	}
+	uids := make([]int, 0, len(uidSet))
+	for id := range uidSet {
+		uids = append(uids, id)
+	}
+	userMap := s.userClient.Hydrate(ctx, uids)
+
+	items := make([]CommentItem, 0, len(rows))
+	for _, r := range rows {
+		u := userMap[r.UserID]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
 		item := CommentItem{
 			ID: r.ID, Content: r.Content, GalgameID: r.GalgameID,
-			User:      UserObj{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
+			User:      UserObj{ID: u.ID, Name: u.Name, Avatar: u.Avatar},
 			LikeCount: r.LikeCount, Created: r.CreatedAt,
 		}
 		if r.TargetUserID != nil {
+			t := userMap[*r.TargetUserID]
 			item.TargetUser = &UserObj{
-				ID: *r.TargetUserID, Name: r.TargetUserName, Avatar: r.TargetUserAvatar,
+				ID: t.ID, Name: t.Name, Avatar: t.Avatar,
 			}
 		}
-		items[i] = item
+		items = append(items, item)
 	}
 
 	return &CommentListResult{Items: items, Total: total}
@@ -77,6 +104,7 @@ func (s *CommentService) GetComments(galgameID, page, limit int) *CommentListRes
 // ──────────────────────────────────────────
 
 func (s *CommentService) CreateComment(
+	ctx context.Context,
 	uid, galgameID int,
 	content string,
 	targetUserID *int,
@@ -94,8 +122,9 @@ func (s *CommentService) CreateComment(
 			Update("comment_count", gorm.Expr("comment_count + 1"))
 
 		if targetUserID != nil && *targetUserID != uid {
-			tx.Model(&userModel.User{}).Where("id = ?", *targetUserID).
-				Update("moemoepoint", gorm.Expr("moemoepoint + 1"))
+			if err := s.stateRepo.AdjustMoemoepointTx(tx, *targetUserID, 1); err != nil {
+				return err
+			}
 
 			link := fmt.Sprintf("/galgame/%d", galgameID)
 			tx.Create(&msgModel.Message{
@@ -110,16 +139,16 @@ func (s *CommentService) CreateComment(
 		return nil, errors.ErrInternal("发表评论失败")
 	}
 
-	// Build response
-	creatorName, creatorAvatar := s.commentRepo.GetUserInfo(uid)
+	// Build response — identity from OAuth.
+	creator, _, _ := s.userClient.User(ctx, uid)
 	resp := &CommentItem{
 		ID: comment.ID, Content: comment.Content, GalgameID: comment.GalgameID,
-		User:      UserObj{ID: uid, Name: creatorName, Avatar: creatorAvatar},
+		User:      UserObj{ID: creator.ID, Name: creator.Name, Avatar: creator.Avatar},
 		LikeCount: 0, Created: comment.CreatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 	if targetUserID != nil {
-		targetName, targetAvatar := s.commentRepo.GetUserInfo(*targetUserID)
-		resp.TargetUser = &UserObj{ID: *targetUserID, Name: targetName, Avatar: targetAvatar}
+		t, _, _ := s.userClient.User(ctx, *targetUserID)
+		resp.TargetUser = &UserObj{ID: t.ID, Name: t.Name, Avatar: t.Avatar}
 	}
 
 	return resp, nil
@@ -169,8 +198,9 @@ func (s *CommentService) ToggleCommentLike(uid, commentID int) *errors.AppError 
 			tx.Model(&model.GalgameComment{}).Where("id = ?", commentID).
 				Update("like_count", gorm.Expr("like_count + 1"))
 			if comment.UserID != uid {
-				tx.Model(&userModel.User{}).Where("id = ?", comment.UserID).
-					Update("moemoepoint", gorm.Expr("moemoepoint + 1"))
+				if err := s.stateRepo.AdjustMoemoepointTx(tx, comment.UserID, 1); err != nil {
+					return err
+				}
 				s.helpers.CreateGalgameMessageWithContent(
 					tx, uid, comment.UserID, "liked",
 					truncate(comment.Content, 233),
@@ -182,8 +212,9 @@ func (s *CommentService) ToggleCommentLike(uid, commentID int) *errors.AppError 
 			tx.Model(&model.GalgameComment{}).Where("id = ?", commentID).
 				Update("like_count", gorm.Expr("like_count - 1"))
 			if comment.UserID != uid {
-				tx.Model(&userModel.User{}).Where("id = ?", comment.UserID).
-					Update("moemoepoint", gorm.Expr("moemoepoint - 1"))
+				if err := s.stateRepo.AdjustMoemoepointTx(tx, comment.UserID, -1); err != nil {
+					return err
+				}
 			}
 		}
 		return nil

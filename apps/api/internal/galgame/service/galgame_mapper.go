@@ -8,7 +8,7 @@ import (
 	"kun-galgame-api/internal/galgame/model"
 	"kun-galgame-api/internal/galgame/repository"
 	"kun-galgame-api/internal/infrastructure/markdown"
-	userModel "kun-galgame-api/internal/user/model"
+	"kun-galgame-api/pkg/userclient"
 )
 
 // ──────────────────────────────────────────
@@ -146,7 +146,7 @@ func tagsFromWiki(tags []dto.WikiTagWithSpoiler) []dto.GalgameDetailTag {
 // detailRatingFromRow maps a DB rating row into the detail-page rating card.
 func detailRatingFromRow(
 	r repository.GalgameDetailRatingRow,
-	user userModel.UserBrief,
+	user userclient.User,
 	isLiked bool,
 	galgameID int,
 	g dto.WikiGalgameDetailFull,

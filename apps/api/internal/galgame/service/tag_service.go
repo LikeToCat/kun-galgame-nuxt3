@@ -117,7 +117,7 @@ func (s *TagService) GetByMultiTag(
 
 	filtered := s.enricher.FilterSFW(parsed.Items, isSFW)
 	return &TagMultiPage{
-		Galgames: s.enricher.ToCards(filtered),
+		Galgames: s.enricher.ToCards(ctx, filtered),
 		Total:    parsed.Total,
 	}, nil
 }
@@ -196,7 +196,7 @@ func (s *TagService) GetDetail(
 		Category:     t.Category,
 		Description:  t.Description,
 		Alias:        aliasesToNames(t.Alias),
-		Galgame:      s.enricher.ToCards(filtered),
+		Galgame:      s.enricher.ToCards(ctx, filtered),
 		GalgameCount: parsed.Total,
 	}, nil
 }

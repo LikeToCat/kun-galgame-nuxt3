@@ -16,12 +16,14 @@ import (
 // so the caller controls atomicity.
 type InteractionHelpers struct{}
 
-// AdjustMoemoepoint adds `delta` to the target user's moemoepoint.
+// AdjustMoemoepoint adds `delta` to the target user's moemoepoint in the
+// kungal_user_state table (the post-OAuth-migration source of truth). The
+// legacy user.moemoepoint column is no longer authoritative.
 func (InteractionHelpers) AdjustMoemoepoint(tx *gorm.DB, userID int, delta int) {
 	if userID <= 0 || delta == 0 {
 		return
 	}
-	tx.Model(&userModel.User{}).Where("id = ?", userID).
+	tx.Model(&userModel.KungalUserState{}).Where("user_id = ?", userID).
 		Update("moemoepoint", gorm.Expr("moemoepoint + ?", delta))
 }
 

@@ -6,7 +6,7 @@ import (
 	"kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/internal/galgame/dto"
 	"kun-galgame-api/internal/galgame/model"
-	userModel "kun-galgame-api/internal/user/model"
+	"kun-galgame-api/pkg/userclient"
 )
 
 // decodeProviderNames safely turns the row's jsonb provider_name bytes into a
@@ -68,13 +68,13 @@ func briefToName(b client.GalgameBrief) dto.KunLanguage {
 	}
 }
 
-// userBriefToDTO maps a user model to the dto.UserBrief projection.
-func userBriefToDTO(u userModel.UserBrief) dto.UserBrief {
+// userBriefToDTO maps a userclient.User to the dto.UserBrief projection.
+func userBriefToDTO(u userclient.User) dto.UserBrief {
 	return dto.UserBrief{ID: u.ID, Name: u.Name, Avatar: u.Avatar}
 }
 
 // rowToCard maps a resource row to the list-card DTO.
-func rowToCard(r model.GalgameResourceRow, u userModel.UserBrief) dto.ResourceCard {
+func rowToCard(r model.GalgameResourceRow, u userclient.User) dto.ResourceCard {
 	return dto.ResourceCard{
 		ID:            r.ID,
 		View:          r.View,
@@ -102,7 +102,7 @@ func rowToDownloadDetail(
 	r model.GalgameResourceRow,
 	links []string,
 	isLiked bool,
-	owner userModel.UserBrief,
+	owner userclient.User,
 ) dto.ResourceDownloadDetail {
 	linkDomain := ""
 	if len(links) > 0 {

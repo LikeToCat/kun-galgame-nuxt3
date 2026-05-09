@@ -8,18 +8,21 @@ import (
 	"kun-galgame-api/internal/activity/repository"
 	galgameClient "kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 )
 
 type ActivityService struct {
-	repo   *repository.ActivityRepository
-	wikiGC *galgameClient.GalgameClient
+	repo       *repository.ActivityRepository
+	wikiGC     *galgameClient.GalgameClient
+	userClient *userclient.Client
 }
 
 func NewActivityService(
 	repo *repository.ActivityRepository,
 	gc *galgameClient.GalgameClient,
+	userClient *userclient.Client,
 ) *ActivityService {
-	return &ActivityService{repo: repo, wikiGC: gc}
+	return &ActivityService{repo: repo, wikiGC: gc, userClient: userClient}
 }
 
 // Result holds a paginated activity list.
@@ -46,6 +49,7 @@ func (s *ActivityService) GetActivity(ctx context.Context, typeStr string, page,
 	}
 	items := rowsToItems(rows)
 	s.enrichGalgameItems(ctx, rows, items)
+	s.hydrateActors(ctx, items)
 	return &Result{Items: items, Total: total}, nil
 }
 
@@ -57,12 +61,13 @@ func (s *ActivityService) GetTimeline(ctx context.Context, page, limit int) (*Re
 	}
 	items := rowsToItems(rows)
 	s.enrichGalgameItems(ctx, rows, items)
+	s.hydrateActors(ctx, items)
 	return &Result{Items: items, Total: total}, nil
 }
 
 // rowsToItems converts DB rows into response items (no enrichment yet).
-// The raw DB content is stashed in `Content` and may be replaced during
-// enrichment with a galgame-name-aware string for galgame-scoped types.
+// Identity is left blank — hydrated by hydrateActors after enrichGalgameItems
+// has had a chance to inject GALGAME_CREATION actor IDs from the wiki brief.
 func rowsToItems(rows []repository.ActivityRow) []dto.ActivityItem {
 	items := make([]dto.ActivityItem, len(rows))
 	for i, r := range rows {
@@ -73,7 +78,7 @@ func rowsToItems(rows []repository.ActivityRow) []dto.ActivityItem {
 			Link:      r.Link,
 			Timestamp: r.Created,
 			Actor: dto.Actor{
-				ID: r.UserID, Name: r.UserName, Avatar: r.Avatar,
+				ID: r.UserID,
 			},
 		}
 	}
@@ -157,29 +162,21 @@ func (s *ActivityService) enrichGalgameItems(
 			}
 		}
 	}
+}
 
-	// Resolve display name/avatar for galgame-creation actors whose ID
-	// was just injected from the wiki brief (LEFT JOIN missed them at
-	// query time because user_id was 0).
-	needUsers := make([]int, 0)
-	for _, it := range items {
-		if it.Type == "GALGAME_CREATION" && it.Actor.Name == "" && it.Actor.ID > 0 {
-			needUsers = append(needUsers, it.Actor.ID)
-		}
-	}
-	if len(needUsers) == 0 {
+// hydrateActors batch-fetches identity (name/avatar) from OAuth for every
+// non-zero actor id and writes it back into the items. Runs after
+// enrichGalgameItems so GALGAME_CREATION rows whose actor was injected from
+// the wiki brief are also hydrated.
+func (s *ActivityService) hydrateActors(ctx context.Context, items []dto.ActivityItem) {
+	uids := userclient.CollectIDs(items, func(it dto.ActivityItem) int { return it.Actor.ID })
+	if len(uids) == 0 {
 		return
 	}
-	userMap := map[int]repository.UserInfoRow{}
-	for _, u := range s.repo.FindUsersByIDs(needUsers) {
-		userMap[u.ID] = u
-	}
+	userMap := s.userClient.Hydrate(ctx, uids)
 	for i := range items {
-		if items[i].Type == "GALGAME_CREATION" && items[i].Actor.Name == "" {
-			if u, ok := userMap[items[i].Actor.ID]; ok {
-				items[i].Actor.Name = u.Name
-				items[i].Actor.Avatar = u.Avatar
-			}
-		}
+		u := userMap[items[i].Actor.ID]
+		items[i].Actor.Name = u.Name
+		items[i].Actor.Avatar = u.Avatar
 	}
 }

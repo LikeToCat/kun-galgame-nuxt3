@@ -9,14 +9,19 @@ import (
 	"kun-galgame-api/internal/message/dto"
 	"kun-galgame-api/internal/message/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 )
 
 type ChatService struct {
-	chatRepo *repository.ChatRepository
+	chatRepo   *repository.ChatRepository
+	userClient *userclient.Client
 }
 
-func NewChatService(chatRepo *repository.ChatRepository) *ChatService {
-	return &ChatService{chatRepo: chatRepo}
+func NewChatService(
+	chatRepo *repository.ChatRepository,
+	userClient *userclient.Client,
+) *ChatService {
+	return &ChatService{chatRepo: chatRepo, userClient: userClient}
 }
 
 // ──────────────────────────────────────────
@@ -25,7 +30,8 @@ func NewChatService(chatRepo *repository.ChatRepository) *ChatService {
 
 // GetNavContact returns the chat room list for the message sidebar.
 // For private rooms, the display title/avatar/route are resolved to the
-// OTHER participant (not the current user).
+// OTHER participant (not the current user). Identity is hydrated via
+// userclient since the repo no longer joins on the user table.
 func (s *ChatService) GetNavContact(ctx context.Context, uid int) ([]dto.NavContactItem, *errors.AppError) {
 	rooms, err := s.chatRepo.FindRoomsForUser(uid)
 	if err != nil {
@@ -41,10 +47,15 @@ func (s *ChatService) GetNavContact(ctx context.Context, uid int) ([]dto.NavCont
 	}
 
 	// Participants: { room_id -> [participant...] }
+	participants := s.chatRepo.FindParticipantsByRoomIDs(roomIDs)
 	roomParts := make(map[int][]repository.ParticipantRow)
-	for _, p := range s.chatRepo.FindParticipantsByRoomIDs(roomIDs) {
+	for _, p := range participants {
 		roomParts[p.ChatRoomID] = append(roomParts[p.ChatRoomID], p)
 	}
+
+	// Hydrate participant identity in one batch.
+	pids := userclient.CollectIDs(participants, func(p repository.ParticipantRow) int { return p.UserID })
+	userMap := s.userClient.Hydrate(ctx, pids)
 
 	// Unread + total counts per room.
 	unreadMap := make(map[int]int)
@@ -62,8 +73,9 @@ func (s *ChatService) GetNavContact(ctx context.Context, uid int) ([]dto.NavCont
 		if r.Type == "private" {
 			for _, p := range roomParts[r.ID] {
 				if p.UserID != uid {
-					title = p.UserName
-					avatar = p.UserAvatar
+					u := userMap[p.UserID]
+					title = u.Name
+					avatar = u.Avatar
 					route = strconv.Itoa(p.UserID)
 					break
 				}
@@ -117,13 +129,18 @@ func (s *ChatService) GetChatHistory(
 		s.chatRepo.MarkMessagesRead(msgIDs, uid)
 	}
 
+	// Hydrate sender identity in one batch.
+	uids := userclient.CollectIDs(rows, func(m repository.ChatMessageRow) int { return m.SenderID })
+	userMap := s.userClient.Hydrate(ctx, uids)
+
 	// Reverse DB order (DESC) into chronological ASC order for the response.
 	items := make([]dto.ChatMessageItem, len(rows))
 	for i, m := range rows {
+		u := userMap[m.SenderID]
 		items[len(rows)-1-i] = dto.ChatMessageItem{
 			ID:           m.ID,
 			ChatroomName: m.ChatroomName,
-			Sender:       dto.ChatSender{ID: m.SenderID, Name: m.SenderName, Avatar: m.SenderAvatar},
+			Sender:       dto.ChatSender{ID: u.ID, Name: u.Name, Avatar: u.Avatar},
 			ReceiverUID:  m.ReceiverID,
 			Content:      m.Content,
 			IsRecall:     m.IsRecall,
@@ -197,8 +214,13 @@ func (s *ChatService) RecallMessage(
 	// Only refresh the room preview if this WAS the latest message —
 	// otherwise the preview should keep showing whatever's actually latest.
 	if s.chatRepo.IsLatestMessageInRoom(header.ChatRoomID, messageID) {
-		preview := fmt.Sprintf("%s撤回了一条消息", header.SenderName)
-		s.chatRepo.UpdateRoomLastMessage(header.ChatRoomID, preview, uid, header.SenderName, now)
+		// Look up the sender's current name from OAuth for the preview text.
+		senderName := ""
+		if u, _, err := s.userClient.User(ctx, header.SenderID); err == nil {
+			senderName = u.Name
+		}
+		preview := fmt.Sprintf("%s撤回了一条消息", senderName)
+		s.chatRepo.UpdateRoomLastMessage(header.ChatRoomID, preview, uid, senderName, now)
 	}
 	return nil
 }

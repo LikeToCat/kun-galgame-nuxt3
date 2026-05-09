@@ -6,7 +6,7 @@ import (
 	"kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/internal/galgame/dto"
 	"kun-galgame-api/internal/galgame/model"
-	userModel "kun-galgame-api/internal/user/model"
+	"kun-galgame-api/pkg/userclient"
 )
 
 // rawJSON wraps a DB-stored JSON string into a json.RawMessage, falling back
@@ -30,7 +30,7 @@ func rowToScores(r model.GalgameRatingRow) dto.RatingScores {
 // ratingRowToCard maps a rating row + user + brief to the list card DTO.
 func ratingRowToCard(
 	r model.GalgameRatingRow,
-	user userModel.UserBrief,
+	user userclient.User,
 	brief client.GalgameBrief,
 ) dto.RatingCard {
 	return dto.RatingCard{
@@ -58,18 +58,21 @@ func ratingRowToCard(
 	}
 }
 
-// ratingCommentRowToDTO maps a joined comment row to the response item.
-func ratingCommentRowToDTO(cm model.RatingCommentRow) dto.RatingCommentItem {
+// ratingCommentRowToDTO maps a comment row + hydrated identity map to the
+// response item. The userMap is keyed by user_id and produced via userclient.
+func ratingCommentRowToDTO(cm model.RatingCommentRow, userMap map[int]userclient.User) dto.RatingCommentItem {
+	u := userMap[cm.UserID]
 	item := dto.RatingCommentItem{
 		ID:      cm.ID,
 		Content: cm.Content,
-		User:    dto.UserBrief{ID: cm.UserID, Name: cm.UserName, Avatar: cm.UserAvatar},
+		User:    dto.UserBrief{ID: u.ID, Name: u.Name, Avatar: u.Avatar},
 		Created: cm.Created,
 		Updated: cm.Updated,
 	}
 	if cm.TargetUserID != nil {
+		t := userMap[*cm.TargetUserID]
 		item.TargetUser = &dto.UserBrief{
-			ID: *cm.TargetUserID, Name: cm.TargetName, Avatar: cm.TargetAvatar,
+			ID: t.ID, Name: t.Name, Avatar: t.Avatar,
 		}
 	}
 	return item

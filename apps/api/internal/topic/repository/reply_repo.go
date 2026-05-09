@@ -2,10 +2,8 @@ package repository
 
 import (
 	"kun-galgame-api/internal/topic/model"
-	userModel "kun-galgame-api/internal/user/model"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // ReplyRepository owns topic-reply rows: CRUD, paginated lists, target links,
@@ -63,11 +61,7 @@ func (r *ReplyRepository) FindRepliesPaginated(
 ) ([]ReplyRow, error) {
 	var rows []ReplyRow
 	query := r.db.Table("topic_reply").
-		Select(`topic_reply.*,
-			"user".name AS user_name,
-			"user".avatar AS user_avatar,
-			"user".moemoepoint AS user_moemoepoint`).
-		Joins(`LEFT JOIN "user" ON "user".id = topic_reply.user_id`).
+		Select(`topic_reply.*`).
 		Where("topic_reply.topic_id = ?", topicID)
 
 	if len(excludeIDs) > 0 {
@@ -88,11 +82,7 @@ func (r *ReplyRepository) FindRepliesByIDs(ids []int) ([]ReplyRow, error) {
 	}
 	var rows []ReplyRow
 	err := r.db.Table("topic_reply").
-		Select(`topic_reply.*,
-			"user".name AS user_name,
-			"user".avatar AS user_avatar,
-			"user".moemoepoint AS user_moemoepoint`).
-		Joins(`LEFT JOIN "user" ON "user".id = topic_reply.user_id`).
+		Select(`topic_reply.*`).
 		Where("topic_reply.id IN ?", ids).
 		Find(&rows).Error
 	return rows, err
@@ -120,11 +110,8 @@ func (r *ReplyRepository) FindTargetsByReplyIDs(replyIDs []int) (map[int][]Targe
 		Select(`topic_reply_target.*,
 			tr.floor AS target_floor,
 			tr.content AS target_content,
-			tr.user_id AS target_user_id,
-			"user".name AS target_user_name,
-			"user".avatar AS target_user_avatar`).
+			tr.user_id AS target_user_id`).
 		Joins("LEFT JOIN topic_reply tr ON tr.id = topic_reply_target.target_reply_id").
-		Joins(`LEFT JOIN "user" ON "user".id = tr.user_id`).
 		Where("topic_reply_target.reply_id IN ?", replyIDs).
 		Order("tr.floor ASC").
 		Find(&rows).Error
@@ -237,19 +224,6 @@ func (r *ReplyRepository) CountReplyRelated(replyID int) (commentCount, likeCoun
 }
 
 // ──────────────────────────────────────────
-// LockUserForUpdate (shared helper used by both reply and comment services)
-// ──────────────────────────────────────────
-
-// LockUserForUpdate acquires a FOR UPDATE row lock on the user row and
-// returns the currently-stored moemoepoint balance.
-func (r *ReplyRepository) LockUserForUpdate(tx *gorm.DB, userID int) (*userModel.User, error) {
-	var user userModel.User
-	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-		First(&user, userID).Error
-	return &user, err
-}
-
-// ──────────────────────────────────────────
 // Reply interaction helpers (for tx participation)
 // ──────────────────────────────────────────
 
@@ -340,19 +314,3 @@ func (r *ReplyRepository) FindTargetReplyUserID(tx *gorm.DB, replyID int) (int, 
 	return reply.UserID, nil
 }
 
-// FindCommenterUser loads a minimal user row (id, name, avatar, moemoepoint)
-// for notification/reward purposes. Duplicated here (instead of importing the
-// user repo) to avoid a cross-module dependency for a tiny lookup.
-type CommenterUser struct {
-	ID          int
-	Name        string
-	Avatar      string
-	Moemoepoint int
-}
-
-func (r *ReplyRepository) FindCommenterUser(uid int) (*CommenterUser, error) {
-	var u CommenterUser
-	err := r.db.Table(`"user"`).Select("id, name, avatar, moemoepoint").
-		Where("id = ?", uid).Scan(&u).Error
-	return &u, err
-}

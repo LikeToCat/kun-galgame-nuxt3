@@ -4,8 +4,8 @@ import (
 	galgameClient "kun-galgame-api/internal/galgame/client"
 	"kun-galgame-api/internal/rss/dto"
 	"kun-galgame-api/internal/rss/repository"
-	userRepo "kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/response"
+	"kun-galgame-api/pkg/userclient"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -16,21 +16,28 @@ import (
 type RSSHandler struct {
 	repo       *repository.RSSRepository
 	wikiClient *galgameClient.GalgameClient
-	userRepo   *userRepo.UserBriefRepository
+	userClient *userclient.Client
 }
 
 func NewRSSHandler(
 	repo *repository.RSSRepository,
 	wikiClient *galgameClient.GalgameClient,
-	userRepo *userRepo.UserBriefRepository,
+	userClient *userclient.Client,
 ) *RSSHandler {
-	return &RSSHandler{repo: repo, wikiClient: wikiClient, userRepo: userRepo}
+	return &RSSHandler{repo: repo, wikiClient: wikiClient, userClient: userClient}
 }
 
 // GetTopicRSS returns recent topics for RSS feed.
 // GET /api/rss/topic
 func (h *RSSHandler) GetTopicRSS(c *fiber.Ctx) error {
-	return response.OK(c, h.repo.FindRecentSFWTopics())
+	rows := h.repo.FindRecentSFWTopics()
+	uids := userclient.CollectIDs(rows, func(r dto.TopicRSSItem) int { return r.UserID })
+	userMap := h.userClient.Hydrate(c.Context(), uids)
+	for i := range rows {
+		u := userMap[rows[i].UserID]
+		rows[i].UserName = u.Name
+	}
+	return response.OK(c, rows)
 }
 
 // GetGalgameRSS returns the 10 most recent galgames as RSS items.
@@ -61,7 +68,7 @@ func (h *RSSHandler) GetGalgameRSS(c *fiber.Ctx) error {
 	for _, b := range briefMap {
 		userIDs = append(userIDs, b.UserID)
 	}
-	userMap := h.userRepo.FindUsersByIDs(userIDs)
+	userMap := h.userClient.Hydrate(c.Context(), userIDs)
 
 	items := make([]dto.GalgameRSSItem, 0, len(ids))
 	for _, id := range ids {

@@ -13,6 +13,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// UserHandler exposes the kungal-side user-facing endpoints. After the
+// OAuth-as-truth migration, kungal no longer brokers identity changes
+// (bio / username / email / avatar / ban / delete) — those live in the
+// OAuth admin UI. The endpoints here only deal with kungal-specific
+// state (check-in / moemoepoint / unread counts) and content listings
+// keyed by user_id.
 type UserHandler struct {
 	userService        *service.UserService
 	userContentService *service.UserContentService
@@ -28,7 +34,8 @@ func NewUserHandler(
 	}
 }
 
-// GetProfile returns a user's public profile (with wiki galgame stats merged in).
+// GetProfile returns a user's public profile (identity from OAuth, stats
+// from kungal local).
 // GET /api/user/:uid
 func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	uid, err := strconv.Atoi(c.Params("uid"))
@@ -56,71 +63,6 @@ func (h *UserHandler) CheckIn(c *fiber.Ctx) error {
 	return response.OK(c, points)
 }
 
-// UpdateBio updates the user's bio.
-// PUT /api/user/bio
-func (h *UserHandler) UpdateBio(c *fiber.Ctx) error {
-	user, appErr := middleware.MustGetUser(c)
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-	var req dto.UpdateBioRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, err)
-	}
-	if appErr := h.userService.UpdateBio(c.Context(), user.UID, req.Bio); appErr != nil {
-		return response.Error(c, appErr)
-	}
-	return response.OKMessage(c, "签名更新成功")
-}
-
-// UpdateUsername updates the user's name (costs moemoepoints).
-// PUT /api/user/username
-func (h *UserHandler) UpdateUsername(c *fiber.Ctx) error {
-	user, appErr := middleware.MustGetUser(c)
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-	var req dto.UpdateUsernameRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, err)
-	}
-	if appErr := h.userService.UpdateUsername(c.Context(), user.UID, req.Username); appErr != nil {
-		return response.Error(c, appErr)
-	}
-	return response.OKMessage(c, "用户名更新成功")
-}
-
-// UpdateEmail updates the user's email after code verification.
-// PUT /api/user/email
-func (h *UserHandler) UpdateEmail(c *fiber.Ctx) error {
-	user, appErr := middleware.MustGetUser(c)
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-	var req dto.UpdateEmailRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, err)
-	}
-	if appErr := h.userService.UpdateEmail(c.Context(), user.UID, &req); appErr != nil {
-		return response.Error(c, appErr)
-	}
-	return response.OKMessage(c, "邮箱更新成功")
-}
-
-// GetEmail returns the user's masked email.
-// GET /api/user/email
-func (h *UserHandler) GetEmail(c *fiber.Ctx) error {
-	user, appErr := middleware.MustGetUser(c)
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-	email, appErr := h.userService.GetMaskedEmail(c.Context(), user.UID)
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-	return response.OK(c, email)
-}
-
 // GetStatus returns the user's status (moemoepoints, check-in, unread messages).
 // GET /api/user/status
 func (h *UserHandler) GetStatus(c *fiber.Ctx) error {
@@ -135,23 +77,18 @@ func (h *UserHandler) GetStatus(c *fiber.Ctx) error {
 	return response.OK(c, status)
 }
 
-// readFormFile loads a multipart file into memory, returning a friendly
-// Chinese error on any IO hiccup.
-func readFormFile(c *fiber.Ctx, field string) ([]byte, *errors.AppError) {
-	file, err := c.FormFile(field)
-	if err != nil {
-		return nil, errors.ErrBadRequest("读取图片错误")
+// GetFloatingCard returns lightweight user info for hover card.
+// GET /api/user/:uid/floating — target user is read from ?userId=N (legacy).
+func (h *UserHandler) GetFloatingCard(c *fiber.Ctx) error {
+	var req dto.FloatingCardRequest
+	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
+		return response.Error(c, appErr)
 	}
-	f, err := file.Open()
-	if err != nil {
-		return nil, errors.ErrBadRequest("读取图片错误")
+	card, appErr := h.userService.GetFloatingCard(c.Context(), req.UserID)
+	if appErr != nil {
+		return response.Error(c, appErr)
 	}
-	defer f.Close()
-	buf := make([]byte, file.Size)
-	if _, err := f.Read(buf); err != nil {
-		return nil, errors.ErrBadRequest("读取图片错误")
-	}
-	return buf, nil
+	return response.OK(c, card)
 }
 
 // GetUserGalgames returns a user's galgame list.
@@ -260,48 +197,4 @@ func (h *UserHandler) GetUserRatings(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 	return response.OK(c, page)
-}
-
-// BanUser bans or unbans a user (admin only).
-// PUT /api/user/:uid/ban
-func (h *UserHandler) BanUser(c *fiber.Ctx) error {
-	uid, err := strconv.Atoi(c.Params("uid"))
-	if err != nil {
-		return response.Error(c, errors.ErrBadRequest("无效的用户 ID"))
-	}
-	var req dto.BanUserRequest
-	if appErr := utils.ParseAndValidate(c, &req); appErr != nil {
-		return response.Error(c, appErr)
-	}
-	if appErr := h.userService.BanUser(c.Context(), uid, req.Status); appErr != nil {
-		return response.Error(c, appErr)
-	}
-	return response.OKMessage(c, "用户状态更新成功")
-}
-
-// DeleteUser permanently deletes a user (admin only).
-// DELETE /api/user/:uid
-func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
-	uid, err := strconv.Atoi(c.Params("uid"))
-	if err != nil {
-		return response.Error(c, errors.ErrBadRequest("无效的用户 ID"))
-	}
-	if appErr := h.userService.DeleteUser(c.Context(), uid); appErr != nil {
-		return response.Error(c, appErr)
-	}
-	return response.OKMessage(c, "用户已删除")
-}
-
-// GetFloatingCard returns lightweight user info for hover card.
-// GET /api/user/:uid/floating — target user is read from ?userId=N (legacy).
-func (h *UserHandler) GetFloatingCard(c *fiber.Ctx) error {
-	var req dto.FloatingCardRequest
-	if appErr := utils.ParseQueryAndValidate(c, &req); appErr != nil {
-		return response.Error(c, appErr)
-	}
-	card, appErr := h.userService.GetFloatingCard(req.UserID)
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-	return response.OK(c, card)
 }

@@ -74,22 +74,6 @@ func (h *OAuthHandler) Logout(c *fiber.Ctx) error {
 	return response.OKMessage(c, "已登出")
 }
 
-// SendResetEmailCode issues a 7-digit verification code for the change-email
-// flow. The email must not already belong to any user. Returns the opaque
-// salt; the code is delivered via email.
-// POST /api/auth/email/code/reset
-func (h *OAuthHandler) SendResetEmailCode(c *fiber.Ctx) error {
-	var req dto.SendResetCodeRequest
-	if appErr := utils.ParseAndValidate(c, &req); appErr != nil {
-		return response.Error(c, appErr)
-	}
-	salt, appErr := h.authService.SendResetEmailCode(c.Context(), req.Email, c.IP())
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-	return response.OK(c, salt)
-}
-
 // Me returns the current authenticated user's profile.
 // GET /api/auth/me
 func (h *OAuthHandler) Me(c *fiber.Ctx) error {

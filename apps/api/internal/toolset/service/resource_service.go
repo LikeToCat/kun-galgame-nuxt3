@@ -183,6 +183,6 @@ func adjustMoemoepoint(db *gorm.DB, userID, delta int) {
 	if userID <= 0 || delta == 0 {
 		return
 	}
-	db.Model(&userModel.User{}).Where("id = ?", userID).
+	db.Model(&userModel.KungalUserState{}).Where("user_id = ?", userID).
 		Update("moemoepoint", gorm.Expr("moemoepoint + ?", delta))
 }

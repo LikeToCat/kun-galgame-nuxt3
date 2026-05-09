@@ -15,12 +15,12 @@ func NewRSSRepository(db *gorm.DB) *RSSRepository {
 }
 
 // FindRecentSFWTopics returns the 10 most recent SFW topics for the RSS feed.
+// Identity (UserName) is hydrated by the handler/service via userclient.
 func (r *RSSRepository) FindRecentSFWTopics() []dto.TopicRSSItem {
 	var topics []dto.TopicRSSItem
 	r.db.Table("topic t").
 		Select(`t.id, t.title, SUBSTRING(t.content, 1, 233) AS description,
-			t.user_id, u.name AS user_name, t.created`).
-		Joins(`LEFT JOIN "user" u ON u.id = t.user_id`).
+			t.user_id, t.created`).
 		Where("t.status != 1 AND t.is_nsfw = false").
 		Order("t.created DESC").
 		Limit(10).

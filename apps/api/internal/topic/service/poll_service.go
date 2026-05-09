@@ -10,24 +10,33 @@ import (
 	"kun-galgame-api/internal/topic/dto"
 	topicModel "kun-galgame-api/internal/topic/model"
 	"kun-galgame-api/internal/topic/repository"
+	userRepo "kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type PollService struct {
-	pollRepo  *repository.PollRepository
-	topicRepo *repository.TopicRepository
-	rdb       *redis.Client
+	pollRepo   *repository.PollRepository
+	topicRepo  *repository.TopicRepository
+	stateRepo  *userRepo.StateRepository
+	userClient *userclient.Client
+	rdb        *redis.Client
 }
 
 func NewPollService(
 	pollRepo *repository.PollRepository,
 	topicRepo *repository.TopicRepository,
+	stateRepo *userRepo.StateRepository,
+	userClient *userclient.Client,
 	rdb *redis.Client,
 ) *PollService {
-	return &PollService{pollRepo: pollRepo, topicRepo: topicRepo, rdb: rdb}
+	return &PollService{
+		pollRepo: pollRepo, topicRepo: topicRepo,
+		stateRepo: stateRepo, userClient: userClient, rdb: rdb,
+	}
 }
 
 // ──────────────────────────────────────────
@@ -117,7 +126,7 @@ func (s *PollService) GetPollsByTopic(
 
 	responses := make([]dto.TopicPollResponse, 0, len(polls))
 	for _, poll := range polls {
-		responses = append(responses, s.buildPollResponse(&poll, uid, role))
+		responses = append(responses, s.buildPollResponse(ctx, &poll, uid, role))
 	}
 	return responses, nil
 }
@@ -368,14 +377,21 @@ func (s *PollService) GetVoteLog(
 		return nil, 0, errors.ErrInternal("获取投票记录失败")
 	}
 
-	entries := make([]dto.PollVoteLogEntry, len(rows))
-	for i, r := range rows {
-		entries[i] = dto.PollVoteLogEntry{
+	uids := userclient.CollectIDs(rows, func(r repository.VoteLogRow) int { return r.UserID })
+	userMap := s.userClient.Hydrate(ctx, uids)
+
+	entries := make([]dto.PollVoteLogEntry, 0, len(rows))
+	for _, r := range rows {
+		u := userMap[r.UserID]
+		if !userclient.IsRenderable(u) {
+			continue
+		}
+		entries = append(entries, dto.PollVoteLogEntry{
 			ID:      r.ID,
 			Created: r.CreatedAt,
-			User:    dto.KunUser{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
+			User:    dto.KunUser{ID: u.ID, Name: u.Name, Avatar: u.Avatar},
 			Option:  r.OptionText,
-		}
+		})
 	}
 	return entries, total, nil
 }

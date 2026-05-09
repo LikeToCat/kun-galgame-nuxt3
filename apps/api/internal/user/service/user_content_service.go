@@ -8,23 +8,24 @@ import (
 	"kun-galgame-api/internal/user/dto"
 	"kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 )
 
 type UserContentService struct {
 	userContentRepo *repository.UserContentRepository
-	userBriefRepo   *repository.UserBriefRepository
 	wikiClient      *galgameClient.GalgameClient
+	userClient      *userclient.Client
 }
 
 func NewUserContentService(
 	userContentRepo *repository.UserContentRepository,
-	userBriefRepo *repository.UserBriefRepository,
 	wikiClient *galgameClient.GalgameClient,
+	userClient *userclient.Client,
 ) *UserContentService {
 	return &UserContentService{
 		userContentRepo: userContentRepo,
-		userBriefRepo:   userBriefRepo,
 		wikiClient:      wikiClient,
+		userClient:      userClient,
 	}
 }
 
@@ -58,7 +59,7 @@ func (s *UserContentService) GetUserGalgameCards(
 	platformMap, languageMap := groupResourceMeta(metaRows)
 
 	userIDs := collectUniqueIDs(values(briefMap), func(b galgameClient.GalgameBrief) int { return b.UserID })
-	userMap := s.userBriefRepo.FindUsersByIDs(userIDs)
+	userMap := s.userClient.Hydrate(ctx, userIDs)
 
 	cards := make([]dto.UserGalgameCard, 0, len(ids))
 	for _, id := range ids {
@@ -67,11 +68,12 @@ func (s *UserContentService) GetUserGalgameCards(
 			continue
 		}
 		l := localMap[id]
+		u := userMap[b.UserID]
 		cards = append(cards, dto.UserGalgameCard{
 			ID:                 b.ID,
 			Name:               briefToLocale(b),
 			Banner:             b.Banner,
-			User:               userBriefRowToDTO(userMap[b.UserID]),
+			User:               dto.UserBrief{ID: u.ID, Name: u.Name, Avatar: u.Avatar},
 			ContentLimit:       b.ContentLimit,
 			View:               l.View,
 			LikeCount:          l.LikeCount,
@@ -202,6 +204,9 @@ func (s *UserContentService) GetUserRatings(
 		briefMap, _ = s.wikiClient.GetBatch(ctx, galgameIDs)
 	}
 
+	uids := collectUniqueIDs(rows, func(r repository.UserRating) int { return r.UserID })
+	userMap := s.userClient.Hydrate(ctx, uids)
+
 	items := make([]dto.UserRatingItem, len(rows))
 	for i, r := range rows {
 		var galgameType []string
@@ -220,9 +225,10 @@ func (s *UserContentService) GetUserRatings(
 			}
 		}
 
+		u := userMap[r.UserID]
 		items[i] = dto.UserRatingItem{
 			ID:           r.ID,
-			User:         dto.UserBrief{ID: r.UserID, Name: r.UserName, Avatar: r.UserAvatar},
+			User:         dto.UserBrief{ID: u.ID, Name: u.Name, Avatar: u.Avatar},
 			Recommend:    r.Recommend,
 			Overall:      r.Overall,
 			View:         r.View,

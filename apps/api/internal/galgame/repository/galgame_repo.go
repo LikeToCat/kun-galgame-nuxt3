@@ -2,7 +2,6 @@ package repository
 
 import (
 	"kun-galgame-api/internal/galgame/model"
-	userModel "kun-galgame-api/internal/user/model"
 
 	"gorm.io/gorm"
 )
@@ -59,20 +58,6 @@ func (r *GalgameRepository) FindLocalBatch(ids []int) map[int]GalgameLocalRow {
 	out := make(map[int]GalgameLocalRow, len(rows))
 	for _, row := range rows {
 		out[row.ID] = row
-	}
-	return out
-}
-
-// FindUsersByIDs batch-loads user brief info keyed by user ID.
-func (r *GalgameRepository) FindUsersByIDs(ids []int) map[int]userModel.UserBrief {
-	if len(ids) == 0 {
-		return map[int]userModel.UserBrief{}
-	}
-	var users []userModel.UserBrief
-	r.db.Where("id IN ?", ids).Find(&users)
-	out := make(map[int]userModel.UserBrief, len(users))
-	for _, u := range users {
-		out[u.ID] = u
 	}
 	return out
 }

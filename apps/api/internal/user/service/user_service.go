@@ -3,90 +3,103 @@ package service
 import (
 	"context"
 	"math/rand/v2"
-	"strings"
 
 	galgameClient "kun-galgame-api/internal/galgame/client"
+	"kun-galgame-api/internal/middleware"
 	"kun-galgame-api/internal/user/dto"
 	"kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"github.com/redis/go-redis/v9"
 )
 
+// UserService surfaces the kungal-side user pages: profile, status,
+// floating card, and check-in. Identity (name / avatar / bio / status /
+// roles) is fetched from OAuth via userclient. Per-site state
+// (moemoepoint, daily counters) lives in kungal_user_state. Content
+// counts (topic / reply / etc.) come from local aggregates.
 type UserService struct {
-	userRepo      *repository.UserRepository
+	stateRepo     *repository.StateRepository
 	userStatsRepo *repository.UserStatsRepository
-	userBriefRepo *repository.UserBriefRepository
 	rdb           *redis.Client
 	wikiClient    *galgameClient.GalgameClient
+	userClient    *userclient.Client
 }
 
 func NewUserService(
-	userRepo *repository.UserRepository,
+	stateRepo *repository.StateRepository,
 	userStatsRepo *repository.UserStatsRepository,
-	userBriefRepo *repository.UserBriefRepository,
 	rdb *redis.Client,
 	wikiClient *galgameClient.GalgameClient,
+	userClient *userclient.Client,
 ) *UserService {
 	return &UserService{
-		userRepo:      userRepo,
+		stateRepo:     stateRepo,
 		userStatsRepo: userStatsRepo,
-		userBriefRepo: userBriefRepo,
 		rdb:           rdb,
 		wikiClient:    wikiClient,
+		userClient:    userClient,
 	}
 }
 
 // ──────────────────────────────────────────
-// Profile / account
+// Profile
 // ──────────────────────────────────────────
 
 func (s *UserService) GetUserProfile(ctx context.Context, uid int) (*dto.UserProfileDetail, *errors.AppError) {
-	user, err := s.userRepo.FindByID(uid)
+	u, ok, err := s.userClient.User(ctx, uid)
 	if err != nil {
+		return nil, errors.ErrInternal("查询用户信息失败")
+	}
+	if !ok {
 		return nil, errors.ErrNotFound("未找到该用户")
 	}
-	if user.Status == 1 {
-		return &dto.UserProfileDetail{
-			ID:     user.ID,
-			Name:   user.Name,
-			Status: 1,
-		}, nil
+	// Banned users surface only id+name so callers can render a "已封禁"
+	// placeholder; we don't leak avatar / bio / stats.
+	if u.Status != 0 {
+		return &dto.UserProfileDetail{ID: u.ID, Name: u.Name, Status: u.Status}, nil
 	}
 
 	stats, err := s.userStatsRepo.GetUserStats(uid)
 	if err != nil {
 		return nil, errors.ErrInternal("获取用户统计失败")
 	}
-
-	profile := &dto.UserProfileDetail{
-		ID:          user.ID,
-		Name:        user.Name,
-		Avatar:      user.Avatar,
-		Role:        user.Role,
-		Status:      user.Status,
-		Moemoepoint: user.Moemoepoint,
-		Bio:         user.Bio,
-		CreatedAt:   user.CreatedAt,
-
-		Topic:                  stats.Topic,
-		TopicPoll:              stats.TopicPoll,
-		ReplyCreated:           stats.ReplyCreated,
-		CommentCreated:         stats.CommentCreated,
-		GalgameComment:         stats.GalgameComment,
-		GalgameRating:          stats.GalgameRating,
-		GalgameResource:        stats.GalgameResource,
-		GalgameToolset:         stats.GalgameToolset,
-		GalgameToolsetResource: stats.GalgameToolsetResource,
-
-		Upvote:  stats.Upvote,
-		Like:    stats.Like,
-		Dislike: stats.Dislike,
-
-		DailyTopicCount: stats.DailyTopicCount,
+	state, _ := s.stateRepo.FindByID(uid)
+	moe := 0
+	if state != nil {
+		moe = state.Moemoepoint
 	}
 
-	// Enrich with wiki galgame stats (non-blocking — zero values on failure)
+	profile := &dto.UserProfileDetail{
+		ID:          u.ID,
+		Name:        u.Name,
+		Avatar:      u.Avatar,
+		Role:        middleware.RoleFromOAuthRoles(u.Roles),
+		Status:      u.Status,
+		Moemoepoint: moe,
+		Bio:         u.Bio,
+	}
+	// CreatedAt: kungal_user_state.created marks "first seen on this
+	// site" — close enough for a community profile.
+	if state != nil {
+		profile.CreatedAt = state.CreatedAt
+	}
+
+	profile.Topic = stats.Topic
+	profile.TopicPoll = stats.TopicPoll
+	profile.ReplyCreated = stats.ReplyCreated
+	profile.CommentCreated = stats.CommentCreated
+	profile.GalgameComment = stats.GalgameComment
+	profile.GalgameRating = stats.GalgameRating
+	profile.GalgameResource = stats.GalgameResource
+	profile.GalgameToolset = stats.GalgameToolset
+	profile.GalgameToolsetResource = stats.GalgameToolsetResource
+	profile.Upvote = stats.Upvote
+	profile.Like = stats.Like
+	profile.Dislike = stats.Dislike
+	profile.DailyTopicCount = stats.DailyTopicCount
+
 	if wikiStats, err := s.wikiClient.GetUserStats(ctx, uid); err == nil && wikiStats != nil {
 		profile.Galgame = wikiStats.GalgameCreated
 		profile.DailyGalgameCount = wikiStats.GalgameCreatedToday
@@ -96,90 +109,28 @@ func (s *UserService) GetUserProfile(ctx context.Context, uid int) (*dto.UserPro
 	return profile, nil
 }
 
+// ──────────────────────────────────────────
+// Check-in / status
+// ──────────────────────────────────────────
+
 func (s *UserService) CheckIn(ctx context.Context, uid int) (int, *errors.AppError) {
-	user, err := s.userRepo.FindByID(uid)
+	state, err := s.stateRepo.FindByID(uid)
 	if err != nil {
 		return 0, errors.ErrNotFound("未找到用户")
 	}
-	if user.DailyCheckIn != 0 {
+	if state.DailyCheckIn != 0 {
 		return 0, errors.ErrBadRequest("您今天已经签到过了")
 	}
 
 	points := rand.IntN(8) // 0-7
-	if err := s.userRepo.CheckIn(uid, points); err != nil {
+	if err := s.stateRepo.CheckIn(uid, points); err != nil {
 		return 0, errors.ErrInternal("签到失败")
 	}
-
 	return points, nil
 }
 
-func (s *UserService) UpdateBio(ctx context.Context, uid int, bio string) *errors.AppError {
-	if err := s.userRepo.UpdateField(uid, "bio", bio); err != nil {
-		return errors.ErrInternal("更新签名失败")
-	}
-	return nil
-}
-
-func (s *UserService) UpdateUsername(ctx context.Context, uid int, username string) *errors.AppError {
-	user, err := s.userRepo.FindByID(uid)
-	if err != nil {
-		return errors.ErrNotFound("未找到该用户")
-	}
-	if user.Moemoepoint < 17 {
-		return errors.ErrBadRequest("更改用户名需要 17 萌萌点, 您的萌萌点不足")
-	}
-
-	exists, err := s.userRepo.UsernameExists(username)
-	if err != nil {
-		return errors.ErrInternal("查询用户名失败")
-	}
-	if exists {
-		return errors.ErrBadRequest("您的用户名已经被使用, 请换一个")
-	}
-
-	if err := s.userRepo.UpdateUsernameWithCost(uid, username, 17); err != nil {
-		return errors.ErrInternal("更新用户名失败")
-	}
-	return nil
-}
-
-func (s *UserService) UpdateEmail(ctx context.Context, uid int, req *dto.UpdateEmailRequest) *errors.AppError {
-	codeKey := req.CodeSalt + ":" + req.Email
-	valid, err := s.verifyCode(ctx, codeKey, req.Code)
-	if err != nil || !valid {
-		return errors.ErrBadRequest("错误的邮箱验证码")
-	}
-	s.rdb.Del(ctx, codeKey)
-
-	if err := s.userRepo.UpdateField(uid, "email", req.Email); err != nil {
-		return errors.ErrInternal("更新邮箱失败")
-	}
-	return nil
-}
-
-func (s *UserService) GetMaskedEmail(ctx context.Context, uid int) (string, *errors.AppError) {
-	user, err := s.userRepo.FindByID(uid)
-	if err != nil {
-		return "", errors.ErrNotFound("未找到该用户")
-	}
-
-	email := user.Email
-	atIdx := strings.IndexByte(email, '@')
-	if atIdx < 0 {
-		return email, nil
-	}
-	localPart := email[:atIdx]
-	domain := email[atIdx:]
-
-	masked := localPart
-	if len(localPart) > 2 {
-		masked = localPart[:2] + "~~~~~~~"
-	}
-	return masked + domain, nil
-}
-
 func (s *UserService) GetUserStatus(ctx context.Context, uid int) (*dto.UserStatusResponse, *errors.AppError) {
-	user, err := s.userRepo.FindByID(uid)
+	state, err := s.stateRepo.FindByID(uid)
 	if err != nil {
 		return nil, errors.ErrNotFound("未找到该用户")
 	}
@@ -189,8 +140,8 @@ func (s *UserService) GetUserStatus(ctx context.Context, uid int) (*dto.UserStat
 	unreadChat, _ := s.userStatsRepo.CountUnreadChatMessages(uid)
 
 	return &dto.UserStatusResponse{
-		Moemoepoints:  user.Moemoepoint,
-		IsCheckIn:     user.DailyCheckIn == 1,
+		Moemoepoints:  state.Moemoepoint,
+		IsCheckIn:     state.DailyCheckIn == 1,
 		HasNewMessage: (unreadMessage + unreadSystem + unreadChat) > 0,
 	}, nil
 }
@@ -199,52 +150,31 @@ func (s *UserService) GetUserStatus(ctx context.Context, uid int) (*dto.UserStat
 // Floating hover card
 // ──────────────────────────────────────────
 
-func (s *UserService) GetFloatingCard(uid int) (*dto.FloatingCardResponse, *errors.AppError) {
-	user, err := s.userBriefRepo.FindFloatingUser(uid)
+func (s *UserService) GetFloatingCard(ctx context.Context, uid int) (*dto.FloatingCardResponse, *errors.AppError) {
+	u, ok, err := s.userClient.User(ctx, uid)
 	if err != nil {
+		return nil, errors.ErrInternal("查询用户信息失败")
+	}
+	if !ok || u.Status != 0 {
+		// Banned or missing — kungal hides the card per agreed policy.
 		return nil, errors.ErrNotFound("未找到该用户")
 	}
-	if user.Status == 1 {
-		return nil, errors.ErrNotFound("该用户已被封禁")
+
+	state, _ := s.stateRepo.FindByID(uid)
+	moe := 0
+	if state != nil {
+		moe = state.Moemoepoint
 	}
 
 	stats := s.userStatsRepo.FindFloatingStats(uid)
 	return &dto.FloatingCardResponse{
-		ID:                   user.ID,
-		Name:                 user.Name,
-		Avatar:               user.Avatar,
-		Moemoepoint:          user.Moemoepoint,
+		ID:                   u.ID,
+		Name:                 u.Name,
+		Avatar:               u.Avatar,
+		Moemoepoint:          moe,
 		TopicCount:           stats.TopicCount,
 		TopicReplyCount:      stats.TopicReplyCount,
 		TopicCommentCount:    stats.TopicCommentCount,
 		GalgameResourceCount: stats.ResourceCount,
 	}, nil
-}
-
-// ──────────────────────────────────────────
-// Admin / shared
-// ──────────────────────────────────────────
-
-func (s *UserService) verifyCode(ctx context.Context, key, code string) (bool, error) {
-	stored, err := s.rdb.Get(ctx, key).Result()
-	if err != nil {
-		return false, err
-	}
-	return stored == code, nil
-}
-
-// BanUser bans or unbans a user (admin only).
-func (s *UserService) BanUser(ctx context.Context, uid int, status int) *errors.AppError {
-	if err := s.userRepo.UpdateField(uid, "status", status); err != nil {
-		return errors.ErrInternal("更新用户状态失败")
-	}
-	return nil
-}
-
-// DeleteUser permanently deletes a user (admin only).
-func (s *UserService) DeleteUser(ctx context.Context, uid int) *errors.AppError {
-	if err := s.userRepo.Delete(uid); err != nil {
-		return errors.ErrInternal("删除用户失败")
-	}
-	return nil
 }

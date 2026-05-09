@@ -21,26 +21,18 @@ func (a *App) setupRoutes() {
 
 	api.Get("/home", a.HomeHandler.GetHome)
 
-	// Auth (public)
+	// Auth (public). Identity changes (password / email / username / bio /
+	// avatar) all live in the OAuth admin UI now — kungal owns nothing
+	// that needs an /auth/* email-code flow.
 	auth := api.Group("/auth")
 	auth.Post("/oauth/callback", a.OAuthHandler.Callback)
 	auth.Post("/logout", a.OAuthHandler.Logout)
-	auth.Post("/email/code/reset", a.OAuthHandler.SendResetEmailCode)
 
-	// User (authenticated, fixed paths — registered before :uid to avoid conflicts)
+	// User (authenticated, fixed paths — registered before :uid to avoid conflicts).
+	// Bio / username / email / ban / delete were here pre-OAuth; all moved to OAuth.
 	userAuth := middleware.Auth(a.Redis, a.OAuthClient, a.UserRepo)
 	checkInRL := middleware.RateLimit(a.Redis, "checkin", 1, 24*time.Hour)
-	usernameRL := middleware.RateLimit(a.Redis, "username", 3, time.Hour)
-	emailRL := middleware.RateLimit(a.Redis, "email", 3, time.Hour)
-	// Avatar upload removed: kungal no longer hosts avatars locally.
-	// users.avatar is now a mirror of OAuth's `picture`, refreshed by the
-	// auth middleware on every access-token refresh (~once per hour per
-	// user). To change avatar, the user goes to the OAuth profile page.
 	api.Post("/user/check-in", userAuth, checkInRL, a.UserHandler.CheckIn)
-	api.Put("/user/bio", userAuth, a.UserHandler.UpdateBio)
-	api.Put("/user/username", userAuth, usernameRL, a.UserHandler.UpdateUsername)
-	api.Put("/user/email", userAuth, emailRL, a.UserHandler.UpdateEmail)
-	api.Get("/user/email", userAuth, a.UserHandler.GetEmail)
 	api.Get("/user/status", userAuth, a.UserHandler.GetStatus)
 
 	// User (public, parameterized — AFTER fixed paths)
@@ -295,15 +287,12 @@ func (a *App) setupRoutes() {
 	// ════════════════════════════════════════════
 
 	admin := authed.Group("", middleware.RequireRole(3))
-	admin.Put("/user/:uid/ban", a.UserHandler.BanUser)
-	admin.Delete("/user/:uid", a.UserHandler.DeleteUser)
 	admin.Get("/admin/overview/all", a.AdminOverviewHandler.GetOverview)
 	admin.Get("/admin/overview/stats", a.AdminOverviewHandler.GetStats)
 	admin.Put("/admin/setting/register", a.AdminSettingHandler.ToggleRegisterSetting)
 
-	adminRead := authed.Group("", middleware.RequireRole(2))
-	adminRead.Get("/admin/user", a.AdminUserHandler.GetUserList)
-	adminRead.Get("/admin/user/search", a.AdminUserHandler.SearchUsers)
+	// User management (ban / delete / list / search) is owned by the OAuth
+	// admin UI post-migration — kungal no longer brokers identity ops.
 
 	// Doc admin (role >= 2)
 	docAdmin := authed.Group("", middleware.RequireRole(2))

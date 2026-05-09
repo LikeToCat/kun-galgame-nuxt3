@@ -25,7 +25,7 @@ func (h *SectionHandler) GetSectionTopics(c *fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 
-	resp := h.sectionService.GetSectionTopics(&req)
+	resp := h.sectionService.GetSectionTopics(c.Context(), &req)
 	return response.OK(c, fiber.Map{
 		"topics": resp.Topics,
 		"total":  resp.Total,
