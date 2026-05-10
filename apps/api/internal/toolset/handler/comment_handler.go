@@ -41,7 +41,7 @@ func (h *CommentHandler) GetComments(c *fiber.Ctx) error {
 		req.Limit = 20
 	}
 
-	resp := h.commentService.GetComments(id, &req)
+	resp := h.commentService.GetComments(c.Context(), id, &req)
 	return response.OK(c, resp)
 }
 

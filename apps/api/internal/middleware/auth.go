@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"kun-galgame-api/internal/user/oauth"
-	"kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/response"
 
@@ -63,12 +62,9 @@ type SessionData struct {
 //
 // Take an *oauth.Client (the same one AuthService uses) so that token
 // refresh logic lives in exactly one place — see oauth.Client.RefreshOAuthToken.
-//
-// userRepo is used for the OAuth-mirror path: whenever the access token is
-// refreshed we piggyback a userinfo fetch + avatar upsert. This keeps
-// kungal's local users.avatar snapshot in sync with the canonical OAuth
-// avatar without polling on every request.
-func Auth(rdb *redis.Client, oauthClient *oauth.Client, userRepo *repository.UserRepository) fiber.Handler {
+// Identity (name / avatar / etc.) is OAuth-owned post-migration; mappers
+// fetch via pkg/userclient.
+func Auth(rdb *redis.Client, oauthClient *oauth.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := c.Cookies("kun_session")
 		if token == "" {
@@ -130,7 +126,7 @@ func Auth(rdb *redis.Client, oauthClient *oauth.Client, userRepo *repository.Use
 
 // OptionalAuth is like Auth but does not fail if no session is present.
 // If a valid session exists, UserInfo is attached; otherwise the request proceeds.
-func OptionalAuth(rdb *redis.Client, _ *oauth.Client) fiber.Handler {
+func OptionalAuth(rdb *redis.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := c.Cookies("kun_session")
 		if token == "" {

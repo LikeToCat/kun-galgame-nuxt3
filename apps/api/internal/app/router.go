@@ -30,7 +30,7 @@ func (a *App) setupRoutes() {
 
 	// User (authenticated, fixed paths — registered before :uid to avoid conflicts).
 	// Bio / username / email / ban / delete were here pre-OAuth; all moved to OAuth.
-	userAuth := middleware.Auth(a.Redis, a.OAuthClient, a.UserRepo)
+	userAuth := middleware.Auth(a.Redis, a.OAuthClient)
 	checkInRL := middleware.RateLimit(a.Redis, "checkin", 1, 24*time.Hour)
 	api.Post("/user/check-in", userAuth, checkInRL, a.UserHandler.CheckIn)
 	api.Get("/user/status", userAuth, a.UserHandler.GetStatus)
@@ -131,7 +131,7 @@ func (a *App) setupRoutes() {
 	// OPTIONAL AUTH routes (public but attach user if logged in)
 	// ════════════════════════════════════════════
 
-	optAuth := api.Group("", middleware.OptionalAuth(a.Redis, a.OAuthClient))
+	optAuth := api.Group("", middleware.OptionalAuth(a.Redis))
 	optAuth.Get("/galgame-resource/:id/detail", a.GalgameResourceHandler.GetResourceDownloadDetail)
 	optAuth.Get("/galgame-resource/:id/recommend", a.GalgameResourceHandler.GetRecommend)
 	optAuth.Get("/galgame-resource/:id", a.GalgameResourceHandler.GetResourceDetail)
@@ -167,7 +167,7 @@ func (a *App) setupRoutes() {
 	// AUTHENTICATED routes (require valid session)
 	// ════════════════════════════════════════════
 
-	authed := api.Group("", middleware.Auth(a.Redis, a.OAuthClient, a.UserRepo))
+	authed := api.Group("", middleware.Auth(a.Redis, a.OAuthClient))
 	authed.Get("/auth/me", a.OAuthHandler.Me)
 
 	// Topic (authenticated)

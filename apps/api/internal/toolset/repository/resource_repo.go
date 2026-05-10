@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"kun-galgame-api/internal/toolset/model"
-	userModel "kun-galgame-api/internal/user/model"
 
 	"gorm.io/gorm"
 )
@@ -107,9 +106,3 @@ func (r *ResourceRepository) SetEditedNow(resource *model.GalgameToolsetResource
 	r.db.Model(resource).Update("edited", now)
 }
 
-// FindUser returns a single user brief row used for the resource detail view.
-func (r *ResourceRepository) FindUser(userID int) userModel.UserBrief {
-	var u userModel.UserBrief
-	r.db.Where("id = ?", userID).First(&u)
-	return u
-}

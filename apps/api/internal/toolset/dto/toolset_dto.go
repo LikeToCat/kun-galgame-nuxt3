@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"kun-galgame-api/internal/toolset/model"
-	"kun-galgame-api/internal/toolset/repository"
 	userModel "kun-galgame-api/internal/user/model"
 )
 
@@ -109,7 +108,7 @@ type ToolsetDetailResponse struct {
 	Updated            time.Time                     `json:"updated"`
 	CommentCount       int64                         `json:"commentCount"`
 	CommentPreview     []CommentDetailItem           `json:"commentPreview"`
-	Contributors       []repository.ContributorBrief `json:"contributors"`
+	Contributors       []userModel.UserBrief         `json:"contributors"`
 }
 
 // CreatedToolsetResponse is the raw toolset row returned by POST /toolset.

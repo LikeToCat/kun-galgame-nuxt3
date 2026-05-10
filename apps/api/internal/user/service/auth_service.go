@@ -114,7 +114,6 @@ func (s *AuthService) OAuthCallback(
 		User: &dto.UserProfile{
 			ID:          oauthUser.ID,
 			Name:        oauthUser.Name,
-			Email:       oauthUser.Email,
 			Avatar:      oauthUser.Picture,
 			Role:        role,
 			Moemoepoint: moe,
@@ -157,7 +156,6 @@ func (s *AuthService) GetProfile(
 	return &dto.UserProfile{
 		ID:          u.ID,
 		Name:        u.Name,
-		Email:       "", // not in /users/batch (privacy); fetch via /oauth/userinfo client-side
 		Avatar:      u.Avatar,
 		Role:        middleware.RoleFromOAuthRoles(u.Roles),
 		Moemoepoint: moe,

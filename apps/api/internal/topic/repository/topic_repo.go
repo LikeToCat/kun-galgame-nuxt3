@@ -217,21 +217,14 @@ func (r *TopicRepository) ApplyUpvoteCountAndTime(tx *gorm.DB, topicID int, t ti
 }
 
 // ──────────────────────────────────────────
-// User lookup (avoids cross-module dependency for small projections)
+// Topic author projection (identity hydrated via pkg/userclient by the
+// service layer; moemoepoint comes from kungal_user_state).
 // ──────────────────────────────────────────
 
 // TopicAuthorUser is the minimal user projection needed on the topic detail page.
 type TopicAuthorUser struct {
-	ID          int    `gorm:"column:id"`
-	Name        string `gorm:"column:name"`
-	Avatar      string `gorm:"column:avatar"`
-	Moemoepoint int    `gorm:"column:moemoepoint"`
-}
-
-// FindTopicAuthor loads minimal user fields for the topic author card.
-func (r *TopicRepository) FindTopicAuthor(userID int) (*TopicAuthorUser, error) {
-	var u TopicAuthorUser
-	err := r.db.Table(`"user"`).Select("id, name, avatar, moemoepoint").
-		Where("id = ?", userID).Scan(&u).Error
-	return &u, err
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Avatar      string `json:"avatar"`
+	Moemoepoint int    `json:"moemoepoint"`
 }

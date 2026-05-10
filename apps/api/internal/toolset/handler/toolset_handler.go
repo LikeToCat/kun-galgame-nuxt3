@@ -36,7 +36,7 @@ func (h *ToolsetHandler) GetList(c *fiber.Ctx) error {
 		req.Limit = 24
 	}
 
-	items, total := h.toolsetService.GetList(&req)
+	items, total := h.toolsetService.GetList(c.Context(), &req)
 	return response.Paginated(c, items, total)
 }
 
@@ -68,7 +68,7 @@ func (h *ToolsetHandler) GetDetail(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("无效的工具 ID"))
 	}
 
-	detail, appErr := h.toolsetService.GetDetail(id)
+	detail, appErr := h.toolsetService.GetDetail(c.Context(), id)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}

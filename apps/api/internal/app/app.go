@@ -79,7 +79,6 @@ type App struct {
 	Mailer      *mail.Mailer
 	Config      *config.Config
 	OAuthClient *oauth.Client
-	UserRepo    *repository.UserRepository
 	UserState   *repository.StateRepository
 	UserClient  *userclient.Client
 
@@ -95,7 +94,6 @@ type App struct {
 	MessageChatHandler         *msgHandler.ChatHandler
 	AdminOverviewHandler       *adminHandler.OverviewHandler
 	AdminSettingHandler        *adminHandler.SettingHandler
-	AdminUserHandler           *adminHandler.UserHandler
 	RankingHandler             *rankingHandler.RankingHandler
 	SectionHandler             *sectionHandler.SectionHandler
 	DocArticleHandler          *docHandler.ArticleHandler
@@ -134,7 +132,6 @@ func New(cfg *config.Config) *App {
 	mailer := mail.NewMailer(cfg.Mail)
 
 	// Repositories
-	userRepo := repository.NewUserRepository(db)
 	userStateRepo := repository.NewStateRepository(db)
 	userStatsRepo := repository.NewUserStatsRepository(db)
 	userContentRepo := repository.NewUserContentRepository(db)
@@ -214,10 +211,8 @@ func New(cfg *config.Config) *App {
 	// Admin
 	adminOverviewRepo := adminRepo.NewOverviewRepository(db)
 	adminSettingRepo := adminRepo.NewSettingRepository(rdb)
-	adminUserRepo := adminRepo.NewUserRepository(db)
 	adminOverviewSvc := adminService.NewOverviewService(adminOverviewRepo, gc)
 	adminSettingSvc := adminService.NewSettingService(adminSettingRepo)
-	adminUserSvc := adminService.NewUserService(adminUserRepo)
 
 	// Doc
 	docArticleRepo := docRepo.NewArticleRepository(db)
@@ -233,18 +228,17 @@ func New(cfg *config.Config) *App {
 	toolsetCommentRepo := toolsetRepo.NewCommentRepository(db)
 	toolsetPracticalityRepo := toolsetRepo.NewPracticalityRepository(db)
 	toolsetPracticalitySvc := toolsetService.NewPracticalityService(toolsetPracticalityRepo)
-	toolsetCommentSvc := toolsetService.NewCommentService(toolsetCommentRepo, toolsetRepository)
-	toolsetResourceSvc := toolsetService.NewResourceService(toolsetResourceRepo, toolsetRepository, s3Client)
+	toolsetCommentSvc := toolsetService.NewCommentService(toolsetCommentRepo, toolsetRepository, uc)
+	toolsetResourceSvc := toolsetService.NewResourceService(toolsetResourceRepo, toolsetRepository, s3Client, uc)
 	toolsetUploadSvc := toolsetService.NewUploadService(s3Client, rdb, db)
 	toolsetCoreSvc := toolsetService.NewToolsetService(
 		toolsetRepository, toolsetResourceRepo, toolsetCommentRepo, toolsetPracticalityRepo,
-		s3Client, toolsetPracticalitySvc, toolsetCommentSvc,
+		s3Client, uc, toolsetPracticalitySvc, toolsetCommentSvc,
 	)
 
 	// Handlers
 	app := &App{
 		DB: db, Redis: rdb, S3: s3Client, Mailer: mailer, Config: cfg, OAuthClient: oauthClient,
-		UserRepo:   userRepo,
 		UserState:  userStateRepo,
 		UserClient: uc,
 		OAuthHandler:           handler.NewOAuthHandler(authService, cfg.Server.Mode == "prod"),
@@ -258,7 +252,6 @@ func New(cfg *config.Config) *App {
 		MessageChatHandler:     msgHandler.NewChatHandler(chatSvc),
 		AdminOverviewHandler:   adminHandler.NewOverviewHandler(adminOverviewSvc),
 		AdminSettingHandler:    adminHandler.NewSettingHandler(adminSettingSvc),
-		AdminUserHandler:       adminHandler.NewUserHandler(adminUserSvc),
 		RankingHandler:         rankingHandler.NewRankingHandler(rankingService.NewRankingService(rankingRepo.NewRankingRepository(db), gc, uc)),
 		SectionHandler:         sectionHandler.NewSectionHandler(sectionService.NewSectionService(sectionRepo.NewSectionRepository(db), uc)),
 		DocArticleHandler:      docHandler.NewArticleHandler(docArticleSvc),

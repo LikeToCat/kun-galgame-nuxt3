@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"kun-galgame-api/internal/toolset/model"
 	"kun-galgame-api/internal/toolset/repository"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"gorm.io/gorm"
 )
@@ -17,13 +19,15 @@ import (
 type CommentService struct {
 	commentRepo *repository.CommentRepository
 	toolsetRepo *repository.ToolsetRepository
+	userClient  *userclient.Client
 }
 
 func NewCommentService(
 	commentRepo *repository.CommentRepository,
 	toolsetRepo *repository.ToolsetRepository,
+	userClient *userclient.Client,
 ) *CommentService {
-	return &CommentService{commentRepo: commentRepo, toolsetRepo: toolsetRepo}
+	return &CommentService{commentRepo: commentRepo, toolsetRepo: toolsetRepo, userClient: userClient}
 }
 
 // ──────────────────────────────────────────
@@ -33,6 +37,7 @@ func NewCommentService(
 // ──────────────────────────────────────────
 
 func (s *CommentService) GetComments(
+	ctx context.Context,
 	toolsetID int,
 	req *dto.CommentListRequest,
 ) *dto.ToolsetCommentListResponse {
@@ -59,7 +64,7 @@ func (s *CommentService) GetComments(
 	for id := range userIDSet {
 		uids = append(uids, id)
 	}
-	userMap := s.commentRepo.FindUsersByIDs(uids)
+	userMap := s.userClient.Hydrate(ctx, uids)
 
 	items := make([]dto.ToolsetCommentItem, 0, len(rows))
 	for _, cm := range rows {
@@ -72,11 +77,11 @@ func (s *CommentService) GetComments(
 			ParentID:  cm.ParentID,
 			UserID:    cm.UserID,
 			Reply:     []dto.ToolsetCommentItem{},
-			User:      userMap[cm.UserID],
+			User:      userBriefFromClient(userMap[cm.UserID]),
 		}
 		if cm.ParentID != nil {
 			if puid, ok := parentUserByID[*cm.ParentID]; ok {
-				pu := userMap[puid]
+				pu := userBriefFromClient(userMap[puid])
 				item.TargetUser = &pu
 			}
 		}
@@ -88,13 +93,18 @@ func (s *CommentService) GetComments(
 
 // GetLatestForDetail returns the latest N comments with user info, shaped for
 // the toolset detail response.
-func (s *CommentService) GetLatestForDetail(toolsetID, limit int) []dto.CommentDetailItem {
+func (s *CommentService) GetLatestForDetail(ctx context.Context, toolsetID, limit int) []dto.CommentDetailItem {
 	rows := s.commentRepo.FindLatest(toolsetID, limit)
+	uids := make([]int, 0, len(rows))
+	for _, cm := range rows {
+		uids = append(uids, cm.UserID)
+	}
+	userMap := s.userClient.Hydrate(ctx, uids)
 	items := make([]dto.CommentDetailItem, 0, len(rows))
 	for _, cm := range rows {
 		items = append(items, dto.CommentDetailItem{
 			GalgameToolsetComment: cm,
-			User:                  s.commentRepo.FindUser(cm.UserID),
+			User:                  userBriefFromClient(userMap[cm.UserID]),
 		})
 	}
 	return items

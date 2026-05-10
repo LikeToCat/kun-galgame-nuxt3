@@ -11,6 +11,7 @@ import (
 	"kun-galgame-api/internal/toolset/repository"
 	userModel "kun-galgame-api/internal/user/model"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"gorm.io/gorm"
 )
@@ -19,17 +20,20 @@ type ResourceService struct {
 	resourceRepo *repository.ResourceRepository
 	toolsetRepo  *repository.ToolsetRepository
 	s3           *storage.S3Client
+	userClient   *userclient.Client
 }
 
 func NewResourceService(
 	resourceRepo *repository.ResourceRepository,
 	toolsetRepo *repository.ToolsetRepository,
 	s3 *storage.S3Client,
+	userClient *userclient.Client,
 ) *ResourceService {
 	return &ResourceService{
 		resourceRepo: resourceRepo,
 		toolsetRepo:  toolsetRepo,
 		s3:           s3,
+		userClient:   userClient,
 	}
 }
 
@@ -38,6 +42,7 @@ func NewResourceService(
 // ──────────────────────────────────────────
 
 func (s *ResourceService) GetResourceDetail(
+	ctx context.Context,
 	req *dto.ResourceDetailRequest,
 ) (*dto.ResourceDetailResponse, *errors.AppError) {
 	resource, err := s.resourceRepo.FindByID(req.ResourceID)
@@ -48,7 +53,8 @@ func (s *ResourceService) GetResourceDetail(
 	// Download +1 (fire-and-forget)
 	go s.resourceRepo.IncrementDownload(resource.ID)
 
-	user := s.resourceRepo.FindUser(resource.UserID)
+	uc, _, _ := s.userClient.User(ctx, resource.UserID)
+	user := userModel.UserBrief{ID: uc.ID, Name: uc.Name, Avatar: uc.Avatar}
 
 	return &dto.ResourceDetailResponse{
 		Resource: *resource,

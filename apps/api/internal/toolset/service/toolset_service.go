@@ -12,7 +12,9 @@ import (
 	"kun-galgame-api/internal/toolset/dto"
 	"kun-galgame-api/internal/toolset/model"
 	"kun-galgame-api/internal/toolset/repository"
+	userModel "kun-galgame-api/internal/user/model"
 	"kun-galgame-api/pkg/errors"
+	"kun-galgame-api/pkg/userclient"
 
 	"gorm.io/gorm"
 )
@@ -23,6 +25,7 @@ type ToolsetService struct {
 	commentRepo      *repository.CommentRepository
 	practicalityRepo *repository.PracticalityRepository
 	s3               *storage.S3Client
+	userClient       *userclient.Client
 
 	// Service-level helpers
 	practicalitySvc *PracticalityService
@@ -35,6 +38,7 @@ func NewToolsetService(
 	commentRepo *repository.CommentRepository,
 	practicalityRepo *repository.PracticalityRepository,
 	s3 *storage.S3Client,
+	userClient *userclient.Client,
 	practicalitySvc *PracticalityService,
 	commentSvc *CommentService,
 ) *ToolsetService {
@@ -44,16 +48,23 @@ func NewToolsetService(
 		commentRepo:      commentRepo,
 		practicalityRepo: practicalityRepo,
 		s3:               s3,
+		userClient:       userClient,
 		practicalitySvc:  practicalitySvc,
 		commentSvc:       commentSvc,
 	}
+}
+
+// userBriefFromClient maps a userclient.User to the UserBrief shape used
+// across toolset DTOs. Centralized so every call site is consistent.
+func userBriefFromClient(u userclient.User) userModel.UserBrief {
+	return userModel.UserBrief{ID: u.ID, Name: u.Name, Avatar: u.Avatar}
 }
 
 // ──────────────────────────────────────────
 // GetList — GET /toolset
 // ──────────────────────────────────────────
 
-func (s *ToolsetService) GetList(req *dto.ToolsetListRequest) ([]dto.ToolsetCard, int64) {
+func (s *ToolsetService) GetList(ctx context.Context, req *dto.ToolsetListRequest) ([]dto.ToolsetCard, int64) {
 	filters := repository.ListFilters{
 		Type:     req.Type,
 		Language: req.Language,
@@ -80,7 +91,7 @@ func (s *ToolsetService) GetList(req *dto.ToolsetListRequest) ([]dto.ToolsetCard
 	avgMap := s.practicalityRepo.AveragesForToolsets(toolsetIDs)
 	dlMap := s.resourceRepo.DownloadSumsForToolsets(toolsetIDs)
 	ccMap := s.commentRepo.CountsForToolsets(toolsetIDs)
-	userMap := s.toolsetRepo.FindUsersByIDs(userIDs)
+	userMap := s.userClient.Hydrate(ctx, userIDs)
 
 	cards := make([]dto.ToolsetCard, 0, len(toolsets))
 	for _, t := range toolsets {
@@ -138,7 +149,7 @@ func (s *ToolsetService) Create(
 // GetDetail — GET /toolset/:id
 // ──────────────────────────────────────────
 
-func (s *ToolsetService) GetDetail(id int) (*dto.ToolsetDetailResponse, *errors.AppError) {
+func (s *ToolsetService) GetDetail(ctx context.Context, id int) (*dto.ToolsetDetailResponse, *errors.AppError) {
 	toolset, err := s.toolsetRepo.FindByID(id)
 	if err != nil {
 		return nil, errors.ErrNotFound("未找到该工具")
@@ -149,14 +160,23 @@ func (s *ToolsetService) GetDetail(id int) (*dto.ToolsetDetailResponse, *errors.
 
 	descriptionHTML := markdown.Render(toolset.Description)
 	aliases := s.toolsetRepo.FindAliases(id)
-	user := s.toolsetRepo.FindUser(toolset.UserID)
 
 	practicality := s.practicalitySvc.Summary(id)
 	downloadSum := s.resourceRepo.DownloadSum(id)
 	commentCount := s.commentRepo.CountByToolset(id)
-	comments := s.commentSvc.GetLatestForDetail(id, 5)
-	contributors := s.toolsetRepo.FindContributors(id)
+	comments := s.commentSvc.GetLatestForDetail(ctx, id, 5)
+	contributorIDs := s.toolsetRepo.FindContributorIDs(id)
 	resources := s.resourceRepo.FindByToolset(id)
+
+	// Hydrate the owner + every contributor in one batch (the owner usually
+	// is a contributor too — userclient dedups).
+	allUIDs := append([]int{toolset.UserID}, contributorIDs...)
+	userMap := s.userClient.Hydrate(ctx, allUIDs)
+	user := userBriefFromClient(userMap[toolset.UserID])
+	contributors := make([]userModel.UserBrief, 0, len(contributorIDs))
+	for _, uid := range contributorIDs {
+		contributors = append(contributors, userBriefFromClient(userMap[uid]))
+	}
 
 	// homepage is jsonb (RawMessage) on the model; flatten to []string for the
 	// frontend. Tolerate null/garbage by falling back to an empty slice.

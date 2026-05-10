@@ -16,10 +16,12 @@ type SessionResponse struct {
 	User  *UserProfile `json:"user"`
 }
 
+// UserProfile is the shape returned by /auth/oauth/callback and /auth/me.
+// Email is OAuth-owned; the frontend fetches it via OAuth /oauth/userinfo
+// when needed. Identity here is sourced from OAuth via pkg/userclient.
 type UserProfile struct {
 	ID          int    `json:"id"`
 	Name        string `json:"name"`
-	Email       string `json:"email"`
 	Avatar      string `json:"avatar"`
 	Role        int    `json:"role"`
 	Moemoepoint int    `json:"moemoepoint"`

@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"kun-galgame-api/internal/toolset/model"
-	userModel "kun-galgame-api/internal/user/model"
 
 	"gorm.io/gorm"
 )
@@ -157,13 +156,14 @@ func (r *ToolsetRepository) ReplaceAliases(tx *gorm.DB, toolsetID int, aliases [
 // Contributor
 // ──────────────────────────────────────────
 
-// FindContributors returns the contributors' brief info for a toolset.
-func (r *ToolsetRepository) FindContributors(toolsetID int) []ContributorBrief {
-	var rows []ContributorBrief
-	r.db.Raw(`SELECT u.id, u.name, u.avatar FROM "user" u
-		INNER JOIN galgame_toolset_contributor c ON c.user_id = u.id
-		WHERE c.toolset_id = ?`, toolsetID).Scan(&rows)
-	return rows
+// FindContributorIDs returns the user_id list of contributors for a toolset.
+// Identity (name / avatar) is OAuth-owned — callers hydrate via pkg/userclient.
+func (r *ToolsetRepository) FindContributorIDs(toolsetID int) []int {
+	var ids []int
+	r.db.Model(&model.GalgameToolsetContributor{}).
+		Where("toolset_id = ?", toolsetID).
+		Pluck("user_id", &ids)
+	return ids
 }
 
 // AddContributor adds the given user as a contributor (inside a tx),
@@ -180,38 +180,6 @@ func (r *ToolsetRepository) AddContributor(tx *gorm.DB, toolsetID, userID int) {
 		ToolsetID: toolsetID,
 		UserID:    userID,
 	})
-}
-
-// ContributorBrief is a minimal projection of contributor user info.
-type ContributorBrief struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Avatar string `json:"avatar"`
-}
-
-// ──────────────────────────────────────────
-// User batch loading
-// ──────────────────────────────────────────
-
-// FindUsersByIDs batch-loads user brief rows.
-func (r *ToolsetRepository) FindUsersByIDs(ids []int) map[int]userModel.UserBrief {
-	if len(ids) == 0 {
-		return map[int]userModel.UserBrief{}
-	}
-	var users []userModel.UserBrief
-	r.db.Where("id IN ?", ids).Find(&users)
-	out := make(map[int]userModel.UserBrief, len(users))
-	for _, u := range users {
-		out[u.ID] = u
-	}
-	return out
-}
-
-// FindUser returns a single user brief row (empty if not found).
-func (r *ToolsetRepository) FindUser(userID int) userModel.UserBrief {
-	var u userModel.UserBrief
-	r.db.Where("id = ?", userID).First(&u)
-	return u
 }
 
 // ──────────────────────────────────────────

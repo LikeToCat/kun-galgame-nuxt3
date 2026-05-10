@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"kun-galgame-api/internal/toolset/model"
-	userModel "kun-galgame-api/internal/user/model"
 
 	"gorm.io/gorm"
 )
@@ -88,27 +87,6 @@ func (r *CommentRepository) FindByID(id int) (*model.GalgameToolsetComment, erro
 		return nil, err
 	}
 	return &comment, nil
-}
-
-// FindUser returns a single UserBrief row (empty if not found).
-func (r *CommentRepository) FindUser(userID int) userModel.UserBrief {
-	var u userModel.UserBrief
-	r.db.Where("id = ?", userID).First(&u)
-	return u
-}
-
-// FindUsersByIDs batch-loads UserBriefs keyed by id.
-func (r *CommentRepository) FindUsersByIDs(ids []int) map[int]userModel.UserBrief {
-	if len(ids) == 0 {
-		return map[int]userModel.UserBrief{}
-	}
-	var users []userModel.UserBrief
-	r.db.Where("id IN ?", ids).Find(&users)
-	out := make(map[int]userModel.UserBrief, len(users))
-	for _, u := range users {
-		out[u.ID] = u
-	}
-	return out
 }
 
 // ──────────────────────────────────────────
