@@ -26,10 +26,14 @@ func New(code int, message string, statusCode int) *AppError {
 //
 // 205 → authentication failure → client redirects to /login
 // 233 → generic business error → client shows error message
+// 234 → account banned → client shows banned page; DOES NOT redirect to
+//       /login because logging in again hits the same OAuth 10014 error
+//       (see docs/oauth/api-reference.md §错误码速查)
 const (
-	CodeOK   = 0
-	CodeAuth = 205
-	CodeBiz  = 233
+	CodeOK      = 0
+	CodeAuth    = 205
+	CodeBiz     = 233
+	CodeBanned  = 234
 )
 
 // Auth errors
@@ -39,6 +43,13 @@ func ErrUnauthorized(msg string) *AppError {
 
 func ErrAuthExpired() *AppError {
 	return New(CodeAuth, "用户登录失效", 401)
+}
+
+// ErrAccountBanned signals OAuth-side 10014. Distinct from ErrAuthExpired
+// so the frontend can show a banned page rather than bouncing the user
+// through /login → OAuth → /login in a loop.
+func ErrAccountBanned() *AppError {
+	return New(CodeBanned, "账号已封禁", 403)
 }
 
 func ErrForbidden(msg string) *AppError {

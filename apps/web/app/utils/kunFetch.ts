@@ -9,9 +9,23 @@ interface KunApiResponse<T> {
 }
 
 const CODE_AUTH_EXPIRED = 205
+// CODE_BANNED comes from kungal's mapping of OAuth 10014. We MUST NOT
+// redirect banned users to /login — a fresh login would just hit 10014
+// again at the next refresh, putting them in an infinite loop. Instead
+// surface the message prominently and stop there.
+const CODE_BANNED = 234
 
 const handleApiError = async (code: number, message: string) => {
   if (import.meta.server) return
+
+  if (code === CODE_BANNED) {
+    const userStore = usePersistUserStore()
+    if (userStore.id) {
+      userStore.resetUser()
+    }
+    useMessage(message || '您的账号已被封禁', 'error', 10000)
+    return
+  }
 
   if (code === CODE_AUTH_EXPIRED) {
     const { default: Cookies } = await import('js-cookie')

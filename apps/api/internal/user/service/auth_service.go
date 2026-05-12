@@ -53,11 +53,22 @@ func (s *AuthService) OAuthCallback(
 ) (*dto.SessionResponse, *errors.AppError) {
 	tokenResp, err := s.oauthClient.ExchangeCode(req.Code, req.CodeVerifier)
 	if err != nil {
+		// OAuth can reject the token exchange with 10014 if the user was
+		// banned between issuing the authorization code and exchanging it,
+		// or on some upstream paths that allow code issuance for soon-to-be-
+		// banned accounts. Surface distinctly so the frontend doesn't bounce
+		// the user back through /oauth/authorize (a loop they can't break).
+		if oauth.IsBanned(err) {
+			return nil, errors.ErrAccountBanned()
+		}
 		return nil, errors.ErrBadRequest(fmt.Sprintf("OAuth 授权码交换失败: %v", err))
 	}
 
 	oauthUser, err := s.oauthClient.FetchUserInfo(tokenResp.AccessToken)
 	if err != nil {
+		if oauth.IsBanned(err) {
+			return nil, errors.ErrAccountBanned()
+		}
 		return nil, errors.ErrBadRequest(fmt.Sprintf("获取 OAuth 用户信息失败: %v", err))
 	}
 	if oauthUser.ID <= 0 {
