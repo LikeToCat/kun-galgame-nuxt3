@@ -1,14 +1,21 @@
 package oauth
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
+	"time"
 
 	"kun-galgame-api/pkg/config"
 )
+
+// oauthHTTPTimeout caps every OAuth-server roundtrip (token exchange /
+// refresh / revoke / userinfo) at 10s. Without this every login + every
+// authenticated request would block indefinitely if the OAuth server hung,
+// since the four hot paths all run synchronously in the request hot path.
+const oauthHTTPTimeout = 10 * time.Second
 
 // Client calls the OAuth server via HTTP.
 // It is a thin transport layer: it performs raw HTTP calls and decodes the
@@ -20,10 +27,12 @@ type Client struct {
 }
 
 // NewClient constructs an OAuth HTTP client with the given configuration.
+// The HTTP client carries a per-request timeout so a hung OAuth server can't
+// stall login / token refresh / logout indefinitely.
 func NewClient(cfg config.OAuthConfig) *Client {
 	return &Client{
 		cfg:        cfg,
-		httpClient: http.DefaultClient,
+		httpClient: &http.Client{Timeout: oauthHTTPTimeout},
 	}
 }
 
@@ -70,11 +79,12 @@ func (c *Client) ExchangeCode(code, codeVerifier string) (*TokenResponse, error)
 		return nil, fmt.Errorf("序列化 token 请求失败: %w", err)
 	}
 
-	resp, err := http.Post(
-		c.cfg.ServerURL+"/oauth/token",
-		"application/json",
-		strings.NewReader(string(body)),
-	)
+	req, err := http.NewRequest("POST", c.cfg.ServerURL+"/oauth/token", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("创建 token 请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("请求 OAuth token 失败: %w", err)
 	}
@@ -150,11 +160,12 @@ func (c *Client) RevokeToken(refreshToken string) error {
 	if err != nil {
 		return fmt.Errorf("序列化 revoke 请求失败: %w", err)
 	}
-	resp, err := http.Post(
-		c.cfg.ServerURL+"/oauth/revoke",
-		"application/json",
-		strings.NewReader(string(payload)),
-	)
+	req, err := http.NewRequest("POST", c.cfg.ServerURL+"/oauth/revoke", bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("创建 revoke 请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -175,11 +186,12 @@ func (c *Client) RefreshOAuthToken(refreshToken string) (*TokenResponse, error) 
 		return nil, fmt.Errorf("序列化刷新请求失败: %w", err)
 	}
 
-	resp, err := http.Post(
-		c.cfg.ServerURL+"/oauth/token",
-		"application/json",
-		strings.NewReader(string(body)),
-	)
+	req, err := http.NewRequest("POST", c.cfg.ServerURL+"/oauth/token", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("创建刷新请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

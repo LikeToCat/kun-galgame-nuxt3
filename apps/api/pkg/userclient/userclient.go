@@ -113,9 +113,13 @@ type batchData struct {
 }
 
 // searchData is the data field of /users/search.
+//
+// OAuth returns `{users: [...]}` with no total — /users/search is a
+// relevance-ranked top-N suggestion endpoint, not a paginated list (see
+// docs/migration/user/08-downstream-integration.md §3.2). Earlier this
+// struct decoded `{items, total}` which silently produced an empty result.
 type searchData struct {
-	Items []User `json:"items"`
-	Total int    `json:"total"`
+	Users []User `json:"users"`
 }
 
 // Users returns a map of id -> User. Missing IDs are absent (not nil entries).
@@ -203,30 +207,35 @@ func (c *Client) User(ctx context.Context, id int) (User, bool, error) {
 
 // SearchUsers proxies OAuth /users/search. Results are not cached (search
 // queries are too varied to cache effectively).
-func (c *Client) SearchUsers(ctx context.Context, q string, page, limit int) ([]User, int, error) {
-	if page < 1 {
-		page = 1
-	}
+//
+// OAuth's /users/search is a top-N relevance-ranked suggestion endpoint, not a
+// paginated list — it only accepts `q` + `limit` and returns up to 50 users
+// without a total. The caller should treat len(result) as the total for UI
+// purposes (mention autocomplete / search-as-you-type rather than infinite
+// scroll). `limit` is clamped to OAuth's 50 max.
+func (c *Client) SearchUsers(ctx context.Context, q string, limit int) ([]User, error) {
 	if limit <= 0 {
 		limit = 12
 	}
+	if limit > 50 {
+		limit = 50
+	}
 	endpoint := c.cfg.BaseURL + "/users/search?" + url.Values{
 		"q":     {q},
-		"page":  {strconv.Itoa(page)},
 		"limit": {strconv.Itoa(limit)},
 	}.Encode()
 	var sd searchData
 	if err := c.do(ctx, "GET", endpoint, &sd); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	// Opportunistically warm the hot cache so a subsequent batch hit is free.
 	now := time.Now()
 	c.mu.Lock()
-	for _, u := range sd.Items {
+	for _, u := range sd.Users {
 		c.hot[u.ID] = cacheEntry{user: u, expire: now.Add(c.hotTTL)}
 	}
 	c.mu.Unlock()
-	return sd.Items, sd.Total, nil
+	return sd.Users, nil
 }
 
 // Placeholder builds a render-safe stub for users that are not_found or

@@ -91,7 +91,10 @@ func (s *SearchService) SearchUsers(
 		return nil, errors.ErrInternal("用户搜索未启用")
 	}
 
-	users, total, err := s.userClient.SearchUsers(ctx, raw, page, limit)
+	// OAuth /users/search is a top-N suggestion endpoint with no total or
+	// real pagination; we ignore `page` and use len(result) as the total.
+	_ = page
+	users, err := s.userClient.SearchUsers(ctx, raw, limit)
 	if err != nil {
 		return nil, errors.ErrInternal(fmt.Sprintf("用户搜索失败: %v", err))
 	}
@@ -111,7 +114,7 @@ func (s *SearchService) SearchUsers(
 			// list view that just renders name+avatar+bio cards.
 		})
 	}
-	return &dto.PaginatedResult[dto.UserItem]{Items: items, Total: int64(total)}, nil
+	return &dto.PaginatedResult[dto.UserItem]{Items: items, Total: int64(len(items))}, nil
 }
 
 // SearchReplies returns reply search results. Identity hydrated from OAuth;
