@@ -1,16 +1,26 @@
 <script setup lang="ts">
 import { createGalgameSchema } from '~/validations/galgame'
 
-const { vndbId, name, contentLimit, introduction, aliases } = storeToRefs(
-  usePersistEditGalgameStore()
-)
+const {
+  vndbId,
+  name,
+  contentLimit,
+  ageLimit,
+  originalLanguage,
+  introduction,
+  aliases
+} = storeToRefs(usePersistEditGalgameStore())
 
 const isPublishing = ref(false)
 
 const handlePublishGalgame = async () => {
   const banner = await getImage('kun-galgame-publish-banner')
+  // Wire-format payload uses snake_case keys to match the wiki API
+  // (POST /galgame). The Vue store keeps camelCase locally; we rename
+  // at the boundary so the schema, the JSON body, and the wiki contract
+  // all agree.
   const data: Record<string, number | string | string[] | Blob | null> = {
-    vndbId: vndbId.value,
+    vndb_id: vndbId.value,
     name_en_us: name.value['en-us'],
     name_ja_jp: name.value['ja-jp'],
     name_zh_cn: name.value['zh-cn'],
@@ -19,7 +29,9 @@ const handlePublishGalgame = async () => {
     intro_ja_jp: introduction.value['ja-jp'],
     intro_zh_cn: introduction.value['zh-cn'],
     intro_zh_tw: introduction.value['zh-tw'],
-    contentLimit: contentLimit.value,
+    content_limit: contentLimit.value,
+    age_limit: ageLimit.value,
+    original_language: originalLanguage.value,
     banner,
     aliases: String(aliases.value)
   }
@@ -47,7 +59,7 @@ const handlePublishGalgame = async () => {
     useMessage(10525, 'info', 7777)
   }
 
-  // Wiki 新约定 (docs/galgame_wiki/api-reference.md "Banner 上传"):
+  // Wiki 新约定 (docs/galgame_wiki/01-galgame.md "Banner 上传"):
   //   data: 整个 JSON 串
   //   file: 可选图片二进制
   const { banner: _bannerBlob, ...jsonFields } = data
@@ -56,17 +68,19 @@ const handlePublishGalgame = async () => {
   if (banner instanceof Blob) {
     formData.append('file', banner)
   }
-  const gid = await kunFetch('/galgame', {
+  // POST /galgame returns the created galgame object (`{id, vndb_id, ...}`);
+  // extract `id` for the redirect rather than interpolating the whole object.
+  const created = await kunFetch<{ id: number }>('/galgame', {
     method: 'POST',
     body: formData
   })
   isPublishing.value = false
 
-  if (gid) {
+  if (created?.id) {
     await deleteImage('kun-galgame-publish-banner')
 
     useKunLoliInfo('发布 Galgame 成功', 5)
-    await navigateTo(`/galgame/${gid}`)
+    await navigateTo(`/galgame/${created.id}`)
     usePersistEditGalgameStore().resetEditGalgameStore()
   }
 }

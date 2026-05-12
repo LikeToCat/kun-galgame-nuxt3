@@ -246,7 +246,17 @@ func (a *App) setupRoutes() {
 	authed.Put("/galgame-rating/:id/comment", a.GalgameRatingHandler.UpdateComment)
 	authed.Delete("/galgame-rating/:id/comment", a.GalgameRatingHandler.DeleteComment)
 
-	// Galgame wiki writes (authenticated + token forwarding)
+	// Galgame wiki writes (authenticated + token forwarding).
+	//
+	// Note on PR submission (POST /galgame/:gid/prs): the integration guide
+	// (docs/galgame_wiki/integration-guide.md §6) suggests letting the
+	// frontend call wiki directly to skip this hop, but our kun_session
+	// architecture makes the OAuth access token opaque to the browser
+	// (it lives in Redis, the browser only has the session cookie). So
+	// every wiki write must traverse kungal so the middleware can attach
+	// the session-stored bearer token; ProxyWriteWithToken is the thin
+	// shim that does that. Endpoints with kungal-local side effects
+	// (Create/MergePR) go through GalgameHandler instead.
 	authed.Post("/galgame", a.GalgameHandler.Create)
 	authed.Put("/galgame/:gid", a.GalgameWikiHandler.ProxyWriteWithToken("PUT"))
 	authed.Put("/galgame/:gid/prs/:id/merge", a.GalgameHandler.MergePR)

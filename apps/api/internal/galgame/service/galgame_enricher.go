@@ -94,7 +94,9 @@ func (e *GalgameEnricher) ToCards(ctx context.Context, items []dto.WikiGalgameIt
 			Banner:             g.Banner,
 			User:               userBriefToDTO(userMap[g.UserID]),
 			ContentLimit:       g.ContentLimit,
-			View:               g.View,
+			// View is a kungal-local stat (each site has its own audience),
+			// not metadata; pull from the local stats row instead of wiki.
+			View:               localMap[g.ID].View,
 			LikeCount:          localMap[g.ID].LikeCount,
 			ResourceUpdateTime: g.ResourceUpdateTime,
 			Platform:           []string{},

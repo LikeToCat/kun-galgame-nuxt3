@@ -13,6 +13,10 @@ type WikiAlias struct {
 
 // WikiGalgameItem is the shape returned inside list/detail responses of
 // series/official/engine/tag endpoints (a "lite" galgame summary).
+//
+// Note: wiki returns `view` here too but kungal owns view as a per-site
+// stat — see WikiGalgameDetailFull comment. We don't parse it; enricher
+// reads view from the local stats row.
 type WikiGalgameItem struct {
 	ID                 int    `json:"id"`
 	NameEnUs           string `json:"name_en_us"`
@@ -21,7 +25,6 @@ type WikiGalgameItem struct {
 	NameZhTw           string `json:"name_zh_tw"`
 	Banner             string `json:"banner"`
 	ContentLimit       string `json:"content_limit"`
-	View               int    `json:"view"`
 	ResourceUpdateTime string `json:"resource_update_time"`
 	UserID             int    `json:"user_id"`
 }
@@ -128,7 +131,11 @@ type WikiGalgameDetailFull struct {
 	IntroZhCn          string               `json:"intro_zh_cn"`
 	IntroZhTw          string               `json:"intro_zh_tw"`
 	ContentLimit       string               `json:"content_limit"`
-	View               int                  `json:"view"`
+	// Wiki also returns `view`, but kungal owns view as a per-site stat
+	// (each site has its own user base, so wiki's cross-site view doesn't
+	// fit the on-page "this many people viewed on kungal" semantics).
+	// Intentionally not parsed — see GetDetail in galgame_service.go which
+	// reads view from the local galgame stats row instead.
 	ResourceUpdateTime string               `json:"resource_update_time"`
 	OriginalLanguage   string               `json:"original_language"`
 	AgeLimit           string               `json:"age_limit"`

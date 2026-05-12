@@ -9,8 +9,13 @@ import (
 // Requests
 // ──────────────────────────────────────────
 
+// Wire field name is `toolsetResourceId` to match the frontend convention
+// (validations/toolset.ts) and the legacy nitro endpoints. The internal Go
+// field stays `ResourceID` since the service only deals with one kind of
+// resource id at a time.
+
 type ResourceDetailRequest struct {
-	ResourceID int `query:"resourceId" validate:"required,min=1"`
+	ResourceID int `query:"toolsetResourceId" validate:"required,min=1"`
 }
 
 type CreateResourceRequest struct {
@@ -23,7 +28,7 @@ type CreateResourceRequest struct {
 }
 
 type UpdateResourceRequest struct {
-	ResourceID int    `json:"resourceId" validate:"required,min=1"`
+	ResourceID int    `json:"toolsetResourceId" validate:"required,min=1"`
 	Content    string `json:"content" validate:"max=1007"`
 	Code       string `json:"code" validate:"max=1007"`
 	Password   string `json:"password" validate:"max=1007"`
@@ -32,7 +37,7 @@ type UpdateResourceRequest struct {
 }
 
 type DeleteResourceRequest struct {
-	ResourceID int `query:"resourceId" validate:"required,min=1"`
+	ResourceID int `query:"toolsetResourceId" validate:"required,min=1"`
 }
 
 // ──────────────────────────────────────────

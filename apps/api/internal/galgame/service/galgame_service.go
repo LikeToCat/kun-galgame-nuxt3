@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 
 	"kun-galgame-api/internal/constants"
@@ -11,6 +12,7 @@ import (
 	"kun-galgame-api/internal/galgame/dto"
 	"kun-galgame-api/internal/galgame/model"
 	"kun-galgame-api/internal/galgame/repository"
+	userRepo "kun-galgame-api/internal/user/repository"
 	"kun-galgame-api/pkg/errors"
 	"kun-galgame-api/pkg/userclient"
 
@@ -25,6 +27,7 @@ type GalgameService struct {
 	listRepo         *repository.GalgameListRepository
 	resourceMetaRepo *repository.GalgameResourceMetaRepository
 	detailRatingRepo *repository.GalgameDetailRatingRepository
+	stateRepo        *userRepo.StateRepository
 	wikiClient       *client.GalgameClient
 	userClient       *userclient.Client
 	helpers          InteractionHelpers
@@ -36,6 +39,7 @@ func NewGalgameService(
 	listRepo *repository.GalgameListRepository,
 	resourceMetaRepo *repository.GalgameResourceMetaRepository,
 	detailRatingRepo *repository.GalgameDetailRatingRepository,
+	stateRepo *userRepo.StateRepository,
 	wikiClient *client.GalgameClient,
 	userClient *userclient.Client,
 ) *GalgameService {
@@ -45,6 +49,7 @@ func NewGalgameService(
 		listRepo:         listRepo,
 		resourceMetaRepo: resourceMetaRepo,
 		detailRatingRepo: detailRatingRepo,
+		stateRepo:        stateRepo,
 		wikiClient:       wikiClient,
 		userClient:       userClient,
 	}
@@ -57,6 +62,19 @@ func NewGalgameService(
 // Create forwards the payload to wiki, then awards moemoepoint and creates
 // the local stub row for the new galgame. Returns the raw wiki response body
 // so the handler can forward it verbatim.
+//
+// Daily-limit policy (mirrors topic create, formerly nitro
+// api/galgame/index.post.ts:43): a user can create at most
+// `moemoepoint/10 + 1` galgames per 24h. The limit is checked BEFORE the
+// wiki call so we don't pollute wiki with rejects, using wiki's own
+// `galgame_created_today` stat as the canonical day-count (kungal has no
+// local creation log post-migration). There's still a thin race window
+// between the check and wiki accepting the create — acceptable because
+// wiki rejects duplicate vndb_id, which is the main spam vector.
+//
+// Post-success local side effects (stub row + moemoepoint +3) run inside
+// a single transaction with SELECT … FOR UPDATE on kungal_user_state, so
+// concurrent self-double-submits can't double-reward.
 func (s *GalgameService) Create(
 	ctx context.Context,
 	userID int,
@@ -64,6 +82,21 @@ func (s *GalgameService) Create(
 	body []byte,
 	contentType string,
 ) (json.RawMessage, *errors.AppError) {
+	// Daily-limit gate.
+	state, err := s.stateRepo.FindByID(userID)
+	if err != nil {
+		return nil, errors.ErrNotFound("未找到该用户")
+	}
+	dailyLimit := int64(state.Moemoepoint/10 + 1)
+	if wikiStats, sErr := s.wikiClient.GetUserStats(ctx, userID); sErr == nil && wikiStats != nil {
+		if wikiStats.GalgameCreatedToday >= dailyLimit {
+			return nil, errors.ErrBadRequest("您今日发布的 Galgame 已达上限")
+		}
+	}
+	// On wiki stats failure we choose to allow the create rather than
+	// hard-fail — wiki itself remains the authority on VNDB-ID uniqueness.
+
+	// Forward to wiki.
 	data, appErr := s.wikiClient.PostWithToken(ctx, "/galgame", token, json.RawMessage(body), contentType)
 	if appErr != nil {
 		return nil, appErr
@@ -73,11 +106,25 @@ func (s *GalgameService) Create(
 	_ = json.Unmarshal(data, &created)
 
 	if created.ID > 0 {
-		s.galgameRepo.DB().Transaction(func(tx *gorm.DB) error {
+		txErr := s.galgameRepo.DB().Transaction(func(tx *gorm.DB) error {
+			// Lock the kungal_user_state row so a concurrent create on the
+			// same account can't both pass the check above AND both award +3.
+			if _, lockErr := s.stateRepo.LockForUpdate(tx, userID); lockErr != nil {
+				return lockErr
+			}
 			s.galgameRepo.CreateLocalStub(tx, created.ID)
-			s.helpers.AdjustMoemoepoint(tx, userID, constants.RewardCreateGalgame)
+			if pErr := s.stateRepo.AdjustMoemoepointTx(tx, userID, constants.RewardCreateGalgame); pErr != nil {
+				return pErr
+			}
 			return nil
 		})
+		if txErr != nil {
+			// Wiki already accepted the create; leaving the user without the
+			// +3 reward is preferable to half-rolling-back wiki state.
+			// Surface as a soft error in logs but return the wiki response.
+			slog.Warn("galgame 创建本地副作用失败 (wiki 已成功)",
+				"gid", created.ID, "uid", userID, "error", txErr)
+		}
 	}
 	return data, nil
 }

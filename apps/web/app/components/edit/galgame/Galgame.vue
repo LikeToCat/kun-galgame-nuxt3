@@ -23,11 +23,17 @@ const handleGetVNData = async () => {
     return
   }
 
-  const isDuplicate = await kunFetch('/galgame/check', {
-    method: 'GET',
-    query: { vndbId: vndbId.value }
-  })
-  if (!isDuplicate) {
+  // Wiki API: /galgame/check returns { exists: bool, galgame_id: int? }.
+  // Query param is snake_case `vndb_id` per docs/galgame_wiki/01-galgame.md.
+  const check = await kunFetch<{ exists: boolean; galgame_id?: number }>(
+    '/galgame/check',
+    {
+      method: 'GET',
+      query: { vndb_id: vndbId.value }
+    }
+  )
+  if (check?.exists) {
+    useMessage('该 VNDB ID 已经存在, 请直接在该 Galgame 下发布资源', 'warn')
     return
   }
 
@@ -172,11 +178,13 @@ const handleGetVNData = async () => {
 
         <EditGalgameContentLimit type="create" />
 
+        <EditGalgameMeta />
+
         <EditGalgamePrAlias type="create" />
 
         <KunInfo
-          title="其它 Galgame 信息"
-          description="我们在发布 Galgame 时会自动为您添加所有的 Galgame 标签、Galgame 会社、Galgame 引擎 等信息, 您无需关心这些信息"
+          title="标签 / 会社 / 引擎"
+          description="标签、会社、引擎等元数据由 Galgame Wiki 后续从 VNDB 自动同步；发布时无需手动填写。如同步后仍缺失，可在 Galgame 详情页提交 PR 补充。"
           color="info"
         />
 

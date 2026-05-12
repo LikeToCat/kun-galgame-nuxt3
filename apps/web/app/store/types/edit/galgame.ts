@@ -2,7 +2,9 @@ export interface GalgameStorePersist {
   vndbId: string
   name: KunLanguage
   introduction: KunLanguage
-  contentLimit: string
+  contentLimit: 'sfw' | 'nsfw'
+  ageLimit: 'all' | 'r18'
+  originalLanguage: Language
   aliases: string[]
 }
 
@@ -11,6 +13,8 @@ export interface GalgameEditStoreTemp {
   vndbId: string
   name: KunLanguage
   introduction: KunLanguage
-  contentLimit: string
+  contentLimit: 'sfw' | 'nsfw'
+  ageLimit: 'all' | 'r18'
+  originalLanguage: Language
   alias: string[]
 }

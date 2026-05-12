@@ -43,14 +43,17 @@ export const getGalgameDetailSchema = z.object({
 })
 
 export const getGalgameDuplicateSchema = z.object({
-  vndbId: z
+  vndb_id: z
     .string()
     .refine((s) => VNDBPattern.test(s), { message: '非法的 VNDB ID 格式' })
 })
 
+// Wire-format schema. Field names are snake_case to match the wiki API
+// (POST /galgame). The Vue store keeps camelCase names for ergonomics; the
+// rename happens at the call site right before submission.
 export const createGalgameSchema = z
   .object({
-    vndbId: z
+    vndb_id: z
       .string()
       .min(2)
       .max(10)
@@ -89,7 +92,12 @@ export const createGalgameSchema = z
       .string()
       .max(100007, { message: '游戏介绍最多 100007 字' })
       .default(''),
-    contentLimit: z.enum(['sfw', 'nsfw']),
+    content_limit: z.enum(['sfw', 'nsfw']),
+    age_limit: z.enum(['all', 'r18']).default('all'),
+    original_language: z
+      .enum(['ja-jp', 'en-us', 'zh-cn', 'zh-tw', 'others'])
+      .default('ja-jp'),
+    // Create accepts comma-separated string (matches wiki POST /galgame).
     aliases: z.string().default(''),
     banner: z.unknown()
   })
@@ -136,9 +144,12 @@ export const createGalgameSchema = z
     }
   })
 
+// Wire-format schema for PR submission (POST /galgame/:gid/prs). Wiki PR
+// expects aliases as an array (replace-all), distinct from the create
+// endpoint which takes a comma-separated string.
 export const updateGalgameSchema = z
   .object({
-    vndbId: z
+    vndb_id: z
       .string()
       .min(2)
       .max(10)
@@ -177,20 +188,18 @@ export const updateGalgameSchema = z
       .string()
       .max(100007, { message: '游戏介绍最多 100007 字' })
       .default(''),
-    contentLimit: z.enum(['sfw', 'nsfw']),
-    aliases: z.string().default('')
+    content_limit: z.enum(['sfw', 'nsfw']),
+    aliases: z.array(z.string()).default([])
   })
   .superRefine((data, ctx) => {
-    const aliasArray = data.aliases.split(',')
-    const isAliasLengthValid = aliasArray.length < 30
-    if (!isAliasLengthValid) {
+    if (data.aliases.length >= 30) {
       ctx.addIssue({
         code: 'custom',
         message: 'Galgame 最多有 30 个别名',
         path: ['aliases']
       })
     }
-    const hasInvalidAlias = aliasArray.some((a) => a.length > 500)
+    const hasInvalidAlias = data.aliases.some((a) => a.length > 500)
     if (hasInvalidAlias) {
       ctx.addIssue({
         code: 'custom',

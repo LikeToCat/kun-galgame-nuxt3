@@ -193,7 +193,7 @@ func New(cfg *config.Config) *App {
 	galgameWikiSvc := galgameService.NewWikiService(gc, galgameLocalRepo, uc)
 	galgameCoreSvc := galgameService.NewGalgameService(
 		galgameLocalRepo, galgameInteractionRepo, galgameListRepo,
-		galgameResourceMetaRepo, galgameDetailRatingRepo, gc, uc,
+		galgameResourceMetaRepo, galgameDetailRatingRepo, userStateRepo, gc, uc,
 	)
 
 	// Website

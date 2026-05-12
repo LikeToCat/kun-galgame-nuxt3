@@ -9,8 +9,19 @@ const handlePublishGalgamePR = async () => {
   const galgame = galgamePR.value[0]
   if (!galgame) return
 
+  // Wire-format payload uses snake_case keys to match the wiki PR API
+  // (POST /galgame/:gid/prs). Aliases are sent as a string array
+  // (replace-all semantics), unlike the create endpoint which takes a
+  // comma-separated string — see docs/galgame_wiki/02-revisions-and-prs.md.
+  const aliasList = Array.isArray(galgame.alias)
+    ? galgame.alias.filter((a) => a.trim().length > 0)
+    : String(galgame.alias)
+        .split(',')
+        .map((a) => a.trim())
+        .filter((a) => a.length > 0)
+
   const data: Record<string, number | string | string[]> = {
-    vndbId: galgame.vndbId,
+    vndb_id: galgame.vndbId,
     name_en_us: galgame.name['en-us'],
     name_ja_jp: galgame.name['ja-jp'],
     name_zh_cn: galgame.name['zh-cn'],
@@ -19,8 +30,8 @@ const handlePublishGalgamePR = async () => {
     intro_ja_jp: galgame.introduction['ja-jp'],
     intro_zh_cn: galgame.introduction['zh-cn'],
     intro_zh_tw: galgame.introduction['zh-tw'],
-    contentLimit: galgame.contentLimit,
-    aliases: String(galgame.alias)
+    content_limit: galgame.contentLimit,
+    aliases: aliasList
   }
 
   const result = updateGalgameSchema.safeParse(data)
