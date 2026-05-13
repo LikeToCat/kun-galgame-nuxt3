@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { createGalgameSchema } from '~/validations/galgame'
+import { submitGalgameSchema } from '~/validations/galgame'
+
+// After the submission flow landed (docs/galgame_wiki/07-submission.md),
+// regular users go through POST /galgame/submit which creates a status=3
+// draft awaiting moderation. The legacy POST /galgame endpoint is now
+// gated to admin/moderator at both the wiki and kungal layers, so calling
+// it as a normal user returns 403. The post-success redirect goes to
+// /edit/galgame/mine — status=3 isn't anonymously visible, so /galgame/:gid
+// would 404 for the submitter until approval.
 
 const {
   vndbId,
@@ -13,12 +21,12 @@ const {
 
 const isPublishing = ref(false)
 
-const handlePublishGalgame = async () => {
+const handleSubmitGalgame = async () => {
   const banner = await getImage('kun-galgame-publish-banner')
   // Wire-format payload uses snake_case keys to match the wiki API
-  // (POST /galgame). The Vue store keeps camelCase locally; we rename
-  // at the boundary so the schema, the JSON body, and the wiki contract
-  // all agree.
+  // (POST /galgame/submit). The Vue store keeps camelCase locally; we
+  // rename at the boundary so the schema, the JSON body, and the wiki
+  // contract all agree.
   const data: Record<string, number | string | string[] | Blob | null> = {
     vndb_id: vndbId.value,
     name_en_us: name.value['en-us'],
@@ -35,7 +43,7 @@ const handlePublishGalgame = async () => {
     banner,
     aliases: String(aliases.value)
   }
-  const result = createGalgameSchema.safeParse(data)
+  const result = submitGalgameSchema.safeParse(data)
   if (!result.success) {
     const message = JSON.parse(result.error.message)[0]
     useMessage(
@@ -45,8 +53,8 @@ const handlePublishGalgame = async () => {
     return
   }
   const res = await useComponentMessageStore().alert(
-    '确定发布 Galgame 吗?',
-    '您要发布的是 Galgame。发布后, 您必须到您发布完成的 Galgame 资源详情页, 添加一条该Galgame 资源的获取 / 下载链接。'
+    '确定提交 Galgame 申请吗?',
+    '提交后将进入审核队列, 审核通过后才会被公开展示。审核结果会通过站内消息通知您。在审核期间您可以在「我的提交」页继续编辑或撤回。'
   )
   if (!res) {
     return
@@ -59,7 +67,7 @@ const handlePublishGalgame = async () => {
     useMessage(10525, 'info', 7777)
   }
 
-  // Wiki 新约定 (docs/galgame_wiki/01-galgame.md "Banner 上传"):
+  // multipart 上传约定参见 docs/galgame_wiki/01-galgame.md "Banner 上传":
   //   data: 整个 JSON 串
   //   file: 可选图片二进制
   const { banner: _bannerBlob, ...jsonFields } = data
@@ -68,19 +76,23 @@ const handlePublishGalgame = async () => {
   if (banner instanceof Blob) {
     formData.append('file', banner)
   }
-  // POST /galgame returns the created galgame object (`{id, vndb_id, ...}`);
-  // extract `id` for the redirect rather than interpolating the whole object.
-  const created = await kunFetch<{ id: number }>('/galgame', {
-    method: 'POST',
-    body: formData
-  })
+  // POST /galgame/submit returns the created draft (`{id, status: 3, ...}`).
+  // We only need `id` to confirm success — the redirect goes to the
+  // submitter's pending list, not the public detail page.
+  const created = await kunFetch<{ id: number; status: number }>(
+    '/galgame/submit',
+    {
+      method: 'POST',
+      body: formData
+    }
+  )
   isPublishing.value = false
 
   if (created?.id) {
     await deleteImage('kun-galgame-publish-banner')
 
-    useKunLoliInfo('发布 Galgame 成功', 5)
-    await navigateTo(`/galgame/${created.id}`)
+    useKunLoliInfo('Galgame 申请已提交, 等待审核', 5)
+    await navigateTo('/edit/galgame/mine')
     usePersistEditGalgameStore().resetEditGalgameStore()
   }
 }
@@ -92,9 +104,9 @@ const handlePublishGalgame = async () => {
       :disabled="isPublishing"
       :loading="isPublishing"
       size="lg"
-      @click="handlePublishGalgame"
+      @click="handleSubmitGalgame"
     >
-      确认发布 Galgame
+      提交 Galgame 申请
     </KunButton>
   </div>
 </template>

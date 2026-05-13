@@ -45,6 +45,13 @@ watch(
       </template>
     </MessageAsideSystemItem>
 
+    <!--
+      Wiki notifications — galgame submission review feedback. Data source
+      is the wiki service, not /message/nav/system, so it has its own
+      component with its own fetches.
+    -->
+    <MessageAsideWikiItem />
+
     <MessageAsideItem
       v-for="(room, index) in asideItems"
       :key="index"

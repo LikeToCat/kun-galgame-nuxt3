@@ -31,9 +31,13 @@ export const kunLayoutItem: KunLayoutItem[] = [
         hint: '大升级'
       },
       {
+        // Points at the publish wizard (search-existing-first) rather
+        // than the bare form, to keep duplicate submissions out of the
+        // moderation queue. The form itself lives at /edit/galgame/create
+        // and is reached from the wizard's "新建申请" CTA.
         name: 'createGalgame',
         icon: 'lucide:gamepad-2',
-        router: '/edit/galgame/create',
+        router: '/edit/galgame/publish',
         label: '发布 Galgame'
       },
       {

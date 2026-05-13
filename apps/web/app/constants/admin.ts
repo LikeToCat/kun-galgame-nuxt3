@@ -49,7 +49,12 @@ export const KUN_ADMIN_OVERVIEW_STATS_MODEL_MAP: Record<
   galgame_revision: { label: 'Galgame 编辑历史', color: '#84cc16' }
 } as const
 
-export const KUN_ADMIN_PAGE_ROUTE = ['overview', 'user', 'setting']
+export const KUN_ADMIN_PAGE_ROUTE = [
+  'overview',
+  'user',
+  'submissions',
+  'setting'
+]
 
 export type KUN_ADMIN_PAGE_ROUTE_TYPE = (typeof KUN_ADMIN_PAGE_ROUTE)[number]
 
@@ -72,6 +77,12 @@ export const KUN_ADMIN_PAGE_ASIDE_NAV_ITEM: KunAdminPageAsideItem[] = [
     label: '用户管理',
     icon: 'lucide:user',
     router: 'user'
+  },
+  {
+    name: 'submissions',
+    label: 'Galgame 审核',
+    icon: 'lucide:clipboard-check',
+    router: 'submissions'
   },
   {
     name: 'setting',

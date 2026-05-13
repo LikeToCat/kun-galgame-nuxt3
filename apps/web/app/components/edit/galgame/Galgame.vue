@@ -18,6 +18,15 @@ const { vndbId, name, introduction, aliases } = storeToRefs(
 )
 
 const handleGetVNData = async () => {
+  // After the submission flow landed, VNDB ID is OPTIONAL — original /
+  // indie titles without a VNDB entry can submit with an empty field
+  // (wiki accepts it; see docs/galgame_wiki/07-submission.md). This
+  // helper is only useful when the user has typed a VNDB id and wants
+  // the title/description auto-filled.
+  if (!vndbId.value) {
+    useMessage('请先填写 VNDB ID 后再获取数据', 'warn')
+    return
+  }
   if (!VNDBPattern.test(vndbId.value)) {
     useMessage(10501, 'warn')
     return
@@ -33,7 +42,10 @@ const handleGetVNData = async () => {
     }
   )
   if (check?.exists) {
-    useMessage('该 VNDB ID 已经存在, 请直接在该 Galgame 下发布资源', 'warn')
+    useMessage(
+      '该 VNDB ID 已经存在, 请直接在对应 Galgame 下发布资源',
+      'warn'
+    )
     return
   }
 
@@ -86,8 +98,8 @@ const handleGetVNData = async () => {
         content-class="space-y-6"
       >
         <KunHeader
-          name="发布 Galgame"
-          description="您需要创建 Galgame 才可以在对应的 Galgame 下发布 Galgame 资源, 如果这个 Galgame 已经存在, 直接在这个 Galgame 下添加资源即可"
+          name="提交 Galgame 申请"
+          description="提交后将进入审核队列, 审核通过后才会被公开。如果该 Galgame 已经存在, 直接在该 Galgame 下添加资源即可。您可以在「我的提交」页面查看进度、修改或撤回申请。"
         >
           <template #endContent>
             <KunLink target="_blank" to="/doc/galgame-publish-help">
@@ -102,9 +114,12 @@ const handleGetVNData = async () => {
         </KunDivider>
 
         <div>
-          <h2 class="text-xl">VNDB 编号</h2>
+          <h2 class="text-xl">VNDB 编号 (可选)</h2>
           <div class="my-2 flex items-center justify-center gap-2">
-            <KunInput v-model="vndbId" placeholder="例如: v19658" />
+            <KunInput
+              v-model="vndbId"
+              placeholder="例如: v19658 (无 VNDB 可留空)"
+            />
             <KunButton class-name="whitespace-nowrap" @click="handleGetVNData">
               获取数据
             </KunButton>
@@ -113,11 +128,11 @@ const handleGetVNData = async () => {
             在您获取数据时，我们会自动为您检查该游戏是否重复
           </p>
           <p class="text-default-500 text-sm">
-            我们要求每一部游戏必须有 VNDB ID。VNDB ID 需要在页面上方的 VNDB 官网
-            (vndb.org) 获取，当进入对应游戏的页面，游戏页面的 URL (形如
+            原创 / 独立 / 暂未收录 VNDB 的作品可以留空 VNDB ID。VNDB ID 可在
+            vndb.org 获取，进入对应游戏的页面，URL (形如
             https://vndb.org/v19658) 中的 v19658 就是 VNDB ID。输入 ID
-            后点击'获取数据'，会根据该 ID 尝试从 VNDB 获取游戏的标题和介绍
-            (均为英语)
+            后点击「获取数据」，会根据该 ID 尝试从 VNDB
+            获取游戏的标题和介绍 (均为英语)
           </p>
         </div>
 

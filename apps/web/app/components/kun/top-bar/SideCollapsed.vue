@@ -15,7 +15,9 @@ const collapsedItems: Record<string, KunLayoutCollapsedItem[]>[] = [
       {
         name: 'createGalgame',
         icon: 'lucide:gamepad-2',
-        router: '/edit/galgame/create',
+        // Same routing rationale as constants/layout.ts createGalgame:
+        // point at the wizard, not the bare form.
+        router: '/edit/galgame/publish',
         label: '发布 Gal'
       },
       {

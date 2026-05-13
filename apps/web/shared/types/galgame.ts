@@ -66,3 +66,34 @@ export interface GalgameCard {
   language: string[]
   resourceUpdateTime: Date | string
 }
+
+// MineGalgameItem matches the per-row shape of GET /api/galgame/mine.
+// Wire-format keeps snake_case (passed through verbatim from wiki).
+// See docs/galgame_wiki/07-submission.md §GET /galgame/mine.
+export interface MineGalgameItem {
+  id: number
+  status: number
+  vndb_id: string
+  name_en_us: string
+  name_ja_jp: string
+  name_zh_cn: string
+  name_zh_tw: string
+  banner: string
+  banner_image_hash: string
+  created: string
+  updated: string
+}
+
+export interface MineGalgameList {
+  items: MineGalgameItem[]
+  total: number
+}
+
+// Galgame draft status — see docs/galgame_wiki/07-submission.md §Status 取值.
+export const GalgameStatus = {
+  Published: 0,
+  Banned: 1,
+  VndbDraft: 2,
+  Pending: 3,
+  Declined: 4
+} as const

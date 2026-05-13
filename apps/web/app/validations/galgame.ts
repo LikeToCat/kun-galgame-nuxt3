@@ -48,9 +48,14 @@ export const getGalgameDuplicateSchema = z.object({
     .refine((s) => VNDBPattern.test(s), { message: '非法的 VNDB ID 格式' })
 })
 
-// Wire-format schema. Field names are snake_case to match the wiki API
-// (POST /galgame). The Vue store keeps camelCase names for ergonomics; the
-// rename happens at the call site right before submission.
+// Wire-format schema for the admin-direct create endpoint (POST /galgame).
+// After the submission flow landed, this endpoint is gated to
+// admin/moderator on both wiki and kungal — regular users go through
+// submitGalgameSchema / POST /galgame/submit instead.
+//
+// Field names are snake_case to match the wiki API. The Vue store keeps
+// camelCase names for ergonomics; the rename happens at the call site
+// right before submission.
 export const createGalgameSchema = z
   .object({
     vndb_id: z
@@ -143,6 +148,132 @@ export const createGalgameSchema = z
       })
     }
   })
+
+// Wire-format schema for the user-submission flow (POST /galgame/submit).
+//
+// Differences from createGalgameSchema:
+//   - vndb_id is OPTIONAL — wiki accepts empty for original/indie titles
+//     that lack a VNDB entry (see docs/galgame_wiki/07-submission.md
+//     §POST /galgame/submit). When provided, the v\d+ format is still
+//     enforced. Wiki additionally rejects duplicate VNDB ids server-side.
+//   - All other fields share createGalgameSchema's constraints.
+export const submitGalgameSchema = z
+  .object({
+    vndb_id: z
+      .string()
+      .max(10)
+      .refine((value) => value === '' || VNDBPattern.test(value), {
+        message: '非法的 VNDB ID 格式 (留空表示无 VNDB 编号)'
+      })
+      .default(''),
+    name_en_us: z
+      .string()
+      .max(100007, { message: '游戏名称最多 233 字' })
+      .default(''),
+    name_ja_jp: z
+      .string()
+      .max(100007, { message: '游戏名称最多 233 字' })
+      .default(''),
+    name_zh_cn: z
+      .string()
+      .max(100007, { message: '游戏名称最多 233 字' })
+      .default(''),
+    name_zh_tw: z
+      .string()
+      .max(100007, { message: '游戏名称最多 233 字' })
+      .default(''),
+    intro_en_us: z
+      .string()
+      .max(100007, { message: '游戏介绍最多 100007 字' })
+      .default(''),
+    intro_ja_jp: z
+      .string()
+      .max(100007, { message: '游戏介绍最多 100007 字' })
+      .default(''),
+    intro_zh_cn: z
+      .string()
+      .max(100007, { message: '游戏介绍最多 100007 字' })
+      .default(''),
+    intro_zh_tw: z
+      .string()
+      .max(100007, { message: '游戏介绍最多 100007 字' })
+      .default(''),
+    content_limit: z.enum(['sfw', 'nsfw']),
+    age_limit: z.enum(['all', 'r18']).default('all'),
+    original_language: z
+      .enum(['ja-jp', 'en-us', 'zh-cn', 'zh-tw', 'others'])
+      .default('ja-jp'),
+    aliases: z.string().default(''),
+    banner: z.unknown()
+  })
+  .superRefine((data, ctx) => {
+    const aliasArray = data.aliases.split(',')
+    if (aliasArray.length >= 30) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Galgame 最多有 30 个别名',
+        path: ['aliases']
+      })
+    }
+    if (aliasArray.some((a) => a.length > 500)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: '每个 Galgame 别名最多 500 个字符',
+        path: ['aliases']
+      })
+    }
+
+    const hasAtLeastOneName =
+      data.name_en_us || data.name_ja_jp || data.name_zh_cn || data.name_zh_tw
+    if (!hasAtLeastOneName) {
+      ctx.addIssue({
+        code: 'custom',
+        message: '至少需要填写一个语言版本的游戏名称',
+        path: ['name_zh_cn']
+      })
+    }
+
+    const hasAtLeastOneIntro =
+      data.intro_en_us ||
+      data.intro_ja_jp ||
+      data.intro_zh_cn ||
+      data.intro_zh_tw
+    if (!hasAtLeastOneIntro) {
+      ctx.addIssue({
+        code: 'custom',
+        message: '至少需要填写一个语言版本的游戏介绍',
+        path: ['intro_zh_cn']
+      })
+    }
+  })
+
+// Wire-format schema for editing one's own pending/declined draft
+// (PATCH /galgame/:gid). Same field set as submit, all optional — wiki
+// merges with existing values for any field the user didn't touch.
+export const patchDraftSchema = z.object({
+  vndb_id: z
+    .string()
+    .max(10)
+    .refine((value) => value === '' || VNDBPattern.test(value), {
+      message: '非法的 VNDB ID 格式'
+    })
+    .optional(),
+  name_en_us: z.string().max(100007).optional(),
+  name_ja_jp: z.string().max(100007).optional(),
+  name_zh_cn: z.string().max(100007).optional(),
+  name_zh_tw: z.string().max(100007).optional(),
+  intro_en_us: z.string().max(100007).optional(),
+  intro_ja_jp: z.string().max(100007).optional(),
+  intro_zh_cn: z.string().max(100007).optional(),
+  intro_zh_tw: z.string().max(100007).optional(),
+  content_limit: z.enum(['sfw', 'nsfw']).optional(),
+  age_limit: z.enum(['all', 'r18']).optional(),
+  original_language: z
+    .enum(['ja-jp', 'en-us', 'zh-cn', 'zh-tw', 'others'])
+    .optional(),
+  aliases: z.string().optional(),
+  is_minor: z.boolean().optional()
+})
 
 // Wire-format schema for PR submission (POST /galgame/:gid/prs). Wiki PR
 // expects aliases as an array (replace-all), distinct from the create

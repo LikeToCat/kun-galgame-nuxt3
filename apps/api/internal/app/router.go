@@ -326,11 +326,17 @@ func (a *App) setupRoutes() {
 	// User management (ban / delete / list / search) is owned by the OAuth
 	// admin UI post-migration — kungal no longer brokers identity ops.
 
-	// Galgame admin (role >= 2): wiki submission review queue. Wiki
-	// requires admin/moderator on /admin/galgame/messages (per
-	// docs/galgame_wiki/08-messages.md), mirror the gate locally.
+	// Galgame admin (role >= 2): wiki submission review queue +
+	// approve/decline/ban actions. Wiki requires admin/moderator on these
+	// (per docs/galgame_wiki/06-admin.md + 08-messages.md); we mirror the
+	// gate locally and forward via ProxyWriteWithToken so the wiki sees
+	// the calling admin's identity for the revision/message side effects.
 	galgameAdmin := authed.Group("", middleware.RequireRole(2))
 	galgameAdmin.Get("/admin/galgame/messages", a.GalgameMessageHandler.AdminMessages)
+	galgameAdmin.Put(
+		"/admin/galgame/:gid/status",
+		a.GalgameWikiHandler.ProxyWriteWithToken("PUT"),
+	)
 
 	// Doc admin (role >= 2)
 	docAdmin := authed.Group("", middleware.RequireRole(2))
