@@ -4,6 +4,7 @@ import (
 	"kun-galgame-api/internal/galgame/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // GalgameInteractionRepository owns the user→galgame interaction rows
@@ -33,11 +34,18 @@ func (r *GalgameInteractionRepository) UserInteraction(userID, galgameID int) (l
 
 // ToggleLike inserts/removes a like row atomically within a caller-supplied tx.
 // Returns whether the result is "now liked".
+//
+// Lazy-creates the local stub before incrementing: pending submissions don't
+// get a stub at submit time, so the first interaction (which may be the
+// submitter liking their own pending row) must INSERT one or the UPDATE
+// would silently affect 0 rows.
 func (r *GalgameInteractionRepository) ToggleLike(tx *gorm.DB, userID, galgameID int) (liked bool) {
 	var existing model.GalgameLike
 	result := tx.Where("user_id = ? AND galgame_id = ?", userID, galgameID).First(&existing)
 
 	if result.Error == gorm.ErrRecordNotFound {
+		tx.Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&model.GalgameLocal{ID: galgameID})
 		tx.Create(&model.GalgameLike{UserID: userID, GalgameID: galgameID})
 		tx.Model(&model.GalgameLocal{}).Where("id = ?", galgameID).
 			Update("like_count", gorm.Expr("like_count + 1"))
@@ -52,11 +60,15 @@ func (r *GalgameInteractionRepository) ToggleLike(tx *gorm.DB, userID, galgameID
 
 // ToggleFavorite inserts/removes a favorite row atomically within a caller tx.
 // Returns whether the result is "now favorited".
+//
+// Same lazy-stub rationale as ToggleLike.
 func (r *GalgameInteractionRepository) ToggleFavorite(tx *gorm.DB, userID, galgameID int) (favorited bool) {
 	var existing model.GalgameFavorite
 	result := tx.Where("user_id = ? AND galgame_id = ?", userID, galgameID).First(&existing)
 
 	if result.Error == gorm.ErrRecordNotFound {
+		tx.Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&model.GalgameLocal{ID: galgameID})
 		tx.Create(&model.GalgameFavorite{UserID: userID, GalgameID: galgameID})
 		tx.Model(&model.GalgameLocal{}).Where("id = ?", galgameID).
 			Update("favorite_count", gorm.Expr("favorite_count + 1"))

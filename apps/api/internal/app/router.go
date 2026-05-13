@@ -222,6 +222,21 @@ func (a *App) setupRoutes() {
 	authed.Post("/website/:domain/comment", a.WebsiteCommentHandler.CreateComment)
 	authed.Delete("/website/:domain/comment", a.WebsiteCommentHandler.DeleteComment)
 
+	// Galgame submission flow (authenticated, any role) — see
+	// docs/galgame_wiki/07-submission.md. The wizard search forces
+	// include_pending=true so the caller sees their own pending hits.
+	authed.Post("/galgame/submit", a.GalgameSubmissionHandler.Submit)
+	authed.Post("/galgame/:gid/claim", a.GalgameSubmissionHandler.Claim)
+	authed.Patch("/galgame/:gid", a.GalgameSubmissionHandler.PatchDraft)
+	authed.Delete("/galgame/:gid", a.GalgameSubmissionHandler.DeleteDraft)
+	authed.Get("/galgame/mine", a.GalgameSubmissionHandler.ListMine)
+	authed.Get("/galgame/search/wizard", a.GalgameSubmissionHandler.SearchWithPending)
+
+	// Wiki message stream — user notifications + per-user read marker.
+	authed.Get("/galgame/messages/mine", a.GalgameMessageHandler.MessagesMine)
+	authed.Get("/galgame/messages/read-state", a.GalgameMessageHandler.GetReadState)
+	authed.Put("/galgame/messages/read-state", a.GalgameMessageHandler.SetReadState)
+
 	// Galgame interactions (authenticated, local)
 	authed.Put("/galgame/:gid/like", a.GalgameHandler.ToggleLike)
 	authed.Put("/galgame/:gid/favorite", a.GalgameHandler.ToggleFavorite)
@@ -257,7 +272,14 @@ func (a *App) setupRoutes() {
 	// the session-stored bearer token; ProxyWriteWithToken is the thin
 	// shim that does that. Endpoints with kungal-local side effects
 	// (Create/MergePR) go through GalgameHandler instead.
-	authed.Post("/galgame", a.GalgameHandler.Create)
+	// POST /galgame is the "admin direct publish" bypass — wiki gates it
+	// to admin/moderator (see docs/galgame_wiki/01-galgame.md §POST). Most
+	// users go through POST /galgame/submit instead. We mirror the gate
+	// here so non-admin attempts fail fast before the wiki hop.
+	authed.Post("/galgame",
+		middleware.RequireRole(2),
+		a.GalgameHandler.Create,
+	)
 	authed.Put("/galgame/:gid", a.GalgameWikiHandler.ProxyWriteWithToken("PUT"))
 	authed.Put("/galgame/:gid/prs/:id/merge", a.GalgameHandler.MergePR)
 	authed.Post("/galgame/:gid/revert", a.GalgameWikiHandler.ProxyWriteWithToken("POST"))
@@ -303,6 +325,12 @@ func (a *App) setupRoutes() {
 
 	// User management (ban / delete / list / search) is owned by the OAuth
 	// admin UI post-migration — kungal no longer brokers identity ops.
+
+	// Galgame admin (role >= 2): wiki submission review queue. Wiki
+	// requires admin/moderator on /admin/galgame/messages (per
+	// docs/galgame_wiki/08-messages.md), mirror the gate locally.
+	galgameAdmin := authed.Group("", middleware.RequireRole(2))
+	galgameAdmin.Get("/admin/galgame/messages", a.GalgameMessageHandler.AdminMessages)
 
 	// Doc admin (role >= 2)
 	docAdmin := authed.Group("", middleware.RequireRole(2))

@@ -3,27 +3,48 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"kun-galgame-api/pkg/errors"
 )
 
 // GalgameClient calls the Galgame Wiki Service via HTTP.
+//
+// Holds two authentication contexts:
+//   - per-request Bearer token (forwarded from the user's kungal session) —
+//     for user-identity endpoints like submit / claim / patch-draft;
+//   - a pre-built HTTP Basic header (OAuth client_id:secret, reused from
+//     pkg/userclient credentials per decision 3 in 07-submission docs) —
+//     for service-to-service endpoints like /galgame/messages/feed.
 type GalgameClient struct {
 	baseURL    string
 	httpClient *http.Client
+	basicAuth  string
 }
 
+// NewGalgameClient builds a client that can only do anonymous + Bearer calls.
+// Suitable when service-to-service endpoints aren't needed.
 func NewGalgameClient(baseURL string) *GalgameClient {
 	return &GalgameClient{
 		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// NewGalgameClientWithBasicAuth additionally enables service-to-service
+// endpoints (currently: /galgame/messages/feed) by pre-computing the Basic
+// auth header. Pass the same OAuth Client ID/secret used by pkg/userclient.
+func NewGalgameClientWithBasicAuth(baseURL, clientID, clientSecret string) *GalgameClient {
+	c := NewGalgameClient(baseURL)
+	c.basicAuth = "Basic " + base64.StdEncoding.EncodeToString([]byte(clientID+":"+clientSecret))
+	return c
 }
 
 // apiResponse is the standard {code, message, data} wrapper.
@@ -35,6 +56,17 @@ type apiResponse struct {
 
 // Get performs a GET request to the wiki service.
 func (c *GalgameClient) Get(ctx context.Context, path string, query url.Values) (json.RawMessage, *errors.AppError) {
+	return c.GetWithToken(ctx, path, "", query)
+}
+
+// GetWithToken is like Get but attaches a Bearer token. Used by endpoints
+// whose response shape depends on the caller's identity:
+//   - /galgame/batch with Bearer returns the caller's own pending drafts
+//   - /galgame/search?include_pending=true returns the caller's pending hits
+//   - /galgame/mine and /galgame/messages/mine are inherently user-scoped
+//
+// token "" reduces to an anonymous GET (same as Get).
+func (c *GalgameClient) GetWithToken(ctx context.Context, path, token string, query url.Values) (json.RawMessage, *errors.AppError) {
 	reqURL := c.baseURL + path
 	if len(query) > 0 {
 		reqURL += "?" + query.Encode()
@@ -44,7 +76,9 @@ func (c *GalgameClient) Get(ctx context.Context, path string, query url.Values) 
 	if err != nil {
 		return nil, errors.ErrInternal("创建请求失败")
 	}
-
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	return c.doRequest(req)
 }
 
@@ -72,6 +106,13 @@ func (c *GalgameClient) PutWithToken(ctx context.Context, path, token string, bo
 // for contentType semantics.
 func (c *GalgameClient) DeleteWithToken(ctx context.Context, path, token string, body any, contentType string) (json.RawMessage, *errors.AppError) {
 	return c.mutateWithToken(ctx, "DELETE", path, token, body, contentType)
+}
+
+// PatchWithToken performs a PATCH with Bearer token. Used by user draft
+// edits (PATCH /galgame/:gid for status IN (3,4)). See PostWithToken for
+// contentType semantics.
+func (c *GalgameClient) PatchWithToken(ctx context.Context, path, token string, body any, contentType string) (json.RawMessage, *errors.AppError) {
+	return c.mutateWithToken(ctx, "PATCH", path, token, body, contentType)
 }
 
 func (c *GalgameClient) mutateWithToken(ctx context.Context, method, path, token string, body any, contentType string) (json.RawMessage, *errors.AppError) {
@@ -154,6 +195,14 @@ func (c *GalgameClient) GetAdminStats(ctx context.Context, days int) (*WikiAdmin
 }
 
 // GalgameBrief is the lightweight metadata returned by /galgame/batch.
+//
+// Status is meaningful for Bearer-authenticated calls (which can see the
+// caller's own status=3 pending / 4 declined drafts in addition to status=0).
+// Anonymous calls always get status=0 entries — see 01-galgame.md.
+//
+// BannerImageHash is the image_service content hash. Frontend rendering
+// prefers it (resolveBannerUrl(hash)) and falls back to the legacy Banner
+// URL when the hash is empty.
 type GalgameBrief struct {
 	ID                 int    `json:"id"`
 	VndbID             string `json:"vndb_id"`
@@ -162,6 +211,8 @@ type GalgameBrief struct {
 	NameZhCn           string `json:"name_zh_cn"`
 	NameZhTw           string `json:"name_zh_tw"`
 	Banner             string `json:"banner"`
+	BannerImageHash    string `json:"banner_image_hash"`
+	Status             int    `json:"status"`
 	ContentLimit       string `json:"content_limit"`
 	UserID             int    `json:"user_id"`
 	ResourceUpdateTime string `json:"resource_update_time"`
@@ -169,21 +220,31 @@ type GalgameBrief struct {
 	AgeLimit           string `json:"age_limit"`
 }
 
-// GetBatch fetches lightweight galgame info for multiple IDs.
-// Returns a map[galgameID] -> GalgameBrief for easy lookup.
+// GetBatch fetches lightweight galgame info for multiple IDs anonymously
+// (status=0 only). Returns a map[galgameID] -> GalgameBrief for easy lookup.
+//
+// For "show me my own pending drafts too" use GetBatchWithViewer.
 func (c *GalgameClient) GetBatch(ctx context.Context, ids []int) (map[int]GalgameBrief, *errors.AppError) {
+	return c.GetBatchWithViewer(ctx, ids, "")
+}
+
+// GetBatchWithViewer is the Bearer-aware batch fetch. With a non-empty token
+// the wiki additionally returns any status=3/4 row whose user_id matches
+// the JWT's uid claim — used by the "我的提交"/"发布向导" UX.
+//
+// token="" reduces to the anonymous form.
+func (c *GalgameClient) GetBatchWithViewer(ctx context.Context, ids []int, token string) (map[int]GalgameBrief, *errors.AppError) {
 	if len(ids) == 0 {
 		return map[int]GalgameBrief{}, nil
 	}
 
-	// Build comma-separated IDs
 	idStrs := make([]string, len(ids))
 	for i, id := range ids {
-		idStrs[i] = fmt.Sprintf("%d", id)
+		idStrs[i] = strconv.Itoa(id)
 	}
 	query := url.Values{"ids": {joinStrings(idStrs, ",")}}
 
-	data, appErr := c.Get(ctx, "/galgame/batch", query)
+	data, appErr := c.GetWithToken(ctx, "/galgame/batch", token, query)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -209,6 +270,102 @@ func joinStrings(s []string, sep string) string {
 		result += sep + v
 	}
 	return result
+}
+
+// ──────────────────────────────────────────
+// Submission (user-identity, Bearer-forwarded)
+// ──────────────────────────────────────────
+
+// SubmitDraft posts a new pending submission (status=3). Returns the wiki
+// response data raw so the handler can forward verbatim. See
+// docs/galgame_wiki/07-submission.md §POST /galgame/submit.
+func (c *GalgameClient) SubmitDraft(ctx context.Context, token string, body []byte, contentType string) (json.RawMessage, *errors.AppError) {
+	return c.PostWithToken(ctx, "/galgame/submit", token, json.RawMessage(body), contentType)
+}
+
+// ClaimDraft flips a VNDB-source draft (status=2) to published (status=0)
+// and assigns the caller as creator + contributor. Server enforces the
+// status precondition.
+func (c *GalgameClient) ClaimDraft(ctx context.Context, token string, gid int) (json.RawMessage, *errors.AppError) {
+	path := "/galgame/" + strconv.Itoa(gid) + "/claim"
+	return c.PostWithToken(ctx, path, token, json.RawMessage(`{}`), "application/json")
+}
+
+// PatchDraft updates the caller's own pending/declined draft (status IN 3,4).
+// If the row was status=4, the wiki flips it back to status=3 (re-queues).
+func (c *GalgameClient) PatchDraft(ctx context.Context, token string, gid int, body []byte, contentType string) (json.RawMessage, *errors.AppError) {
+	path := "/galgame/" + strconv.Itoa(gid)
+	return c.PatchWithToken(ctx, path, token, json.RawMessage(body), contentType)
+}
+
+// DeleteDraft hard-deletes the caller's own pending/declined draft. Wiki
+// CASCADEs the associated wiki tables; kungal still needs to clean its
+// local stub if interaction lazy-created one.
+func (c *GalgameClient) DeleteDraft(ctx context.Context, token string, gid int) *errors.AppError {
+	path := "/galgame/" + strconv.Itoa(gid)
+	_, err := c.DeleteWithToken(ctx, path, token, nil, "")
+	return err
+}
+
+// ──────────────────────────────────────────
+// Message feed (service identity, Basic auth)
+// ──────────────────────────────────────────
+
+// WikiMessageGalgameBrief is the brief embed inside each WikiMessage.
+// Null on hard-deleted galgames — consumers must null-check.
+type WikiMessageGalgameBrief struct {
+	ID     int `json:"id"`
+	Status int `json:"status"`
+}
+
+// WikiMessage matches the per-message shape in /galgame/messages/feed.
+// See docs/galgame_wiki/08-messages.md for the wire format.
+type WikiMessage struct {
+	ID           int64                    `json:"id"`
+	Type         string                   `json:"type"`
+	GalgameID    int                      `json:"galgame_id"`
+	Galgame      *WikiMessageGalgameBrief `json:"galgame"`
+	ActorUserID  int                      `json:"actor_user_id"`
+	TargetUserID *int                     `json:"target_user_id"`
+	Payload      json.RawMessage          `json:"payload"`
+	CreatedAt    string                   `json:"created_at"`
+}
+
+// WikiMessageFeed is the envelope returned by /galgame/messages/feed.
+type WikiMessageFeed struct {
+	Items   []WikiMessage `json:"items"`
+	HasMore bool          `json:"has_more"`
+}
+
+// MessagesFeed pulls a batch of admin-triggered events (approved /
+// declined / banned / unbanned) using OAuth Client Basic Auth. Used by
+// the wiki-message sync cron. Returns ErrInternal if the client wasn't
+// constructed with NewGalgameClientWithBasicAuth.
+func (c *GalgameClient) MessagesFeed(ctx context.Context, sinceID int64, limit int) (*WikiMessageFeed, *errors.AppError) {
+	if c.basicAuth == "" {
+		return nil, errors.ErrInternal("wiki client 未配置 Basic Auth 凭证")
+	}
+	if limit <= 0 {
+		limit = 1000
+	}
+
+	reqURL := c.baseURL + "/galgame/messages/feed?since_id=" +
+		strconv.FormatInt(sinceID, 10) + "&limit=" + strconv.Itoa(limit)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return nil, errors.ErrInternal("创建请求失败")
+	}
+	req.Header.Set("Authorization", c.basicAuth)
+
+	data, appErr := c.doRequest(req)
+	if appErr != nil {
+		return nil, appErr
+	}
+	var feed WikiMessageFeed
+	if err := json.Unmarshal(data, &feed); err != nil {
+		return nil, errors.ErrInternal("解析 wiki 消息 feed 失败")
+	}
+	return &feed, nil
 }
 
 func (c *GalgameClient) doRequest(req *http.Request) (json.RawMessage, *errors.AppError) {

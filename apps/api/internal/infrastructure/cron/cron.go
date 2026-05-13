@@ -10,7 +10,14 @@ import (
 )
 
 // Start creates and starts all scheduled tasks. Returns a stop function.
-func Start(db *gorm.DB, rdb *redis.Client) func() {
+//
+// wikiMessageSync (optional, may be nil) drives the periodic ingestion of
+// admin-triggered events from the wiki message feed. Scheduled every 10
+// minutes — see docs/galgame_wiki/07-submission.md §调用方 cron 同步本地
+// status (the cron pace was bumped from daily so users see their +3
+// moemoepoint within a normal page-refresh window after admin approves
+// their submission).
+func Start(db *gorm.DB, rdb *redis.Client, wikiMessageSync func()) func() {
 	c := cron.New()
 
 	// Daily reset at midnight: clear daily check-in, image count, toolset upload count
@@ -22,6 +29,13 @@ func Start(db *gorm.DB, rdb *redis.Client) func() {
 	c.AddFunc("0 * * * *", func() {
 		cleanupUploadCache(rdb)
 	})
+
+	// Every 10 min: pull wiki submission-stream events and apply local
+	// side effects (+3 moemoepoint on approve, drop stub on ban). Skipped
+	// when the caller didn't wire a sync (e.g. tests).
+	if wikiMessageSync != nil {
+		c.AddFunc("*/10 * * * *", wikiMessageSync)
+	}
 
 	c.Start()
 	slog.Info("定时任务已启动")

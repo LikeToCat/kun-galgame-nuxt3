@@ -12,6 +12,7 @@ import (
 	"kun-galgame-api/pkg/userclient"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type CommentService struct {
@@ -117,6 +118,12 @@ func (s *CommentService) CreateComment(
 	}
 
 	txErr := s.commentRepo.DB().Transaction(func(tx *gorm.DB) error {
+		// Lazy-create stub: a pending submission has no kungal stub yet
+		// (decision 2 in the wiki integration plan), so the very first
+		// interaction must INSERT one or the comment_count UPDATE below
+		// silently affects 0 rows.
+		tx.Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&model.GalgameLocal{ID: galgameID})
 		tx.Create(&comment)
 		tx.Model(&model.GalgameLocal{}).Where("id = ?", galgameID).
 			Update("comment_count", gorm.Expr("comment_count + 1"))

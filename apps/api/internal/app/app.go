@@ -113,6 +113,8 @@ type App struct {
 	GalgameRatingHandler       *galgameHandler.RatingHandler
 	GalgameEntityHandler       *galgameHandler.EntityHandler
 	GalgameWikiHandler         *galgameHandler.WikiHandler
+	GalgameSubmissionHandler   *galgameHandler.SubmissionHandler
+	GalgameMessageHandler      *galgameHandler.WikiMessageHandler
 	ActivityHandler            *activityHandler.ActivityHandler
 	ImageHandler               *imageHandler.ImageHandler
 	SearchHandler              *searchHandler.SearchHandler
@@ -138,8 +140,16 @@ func New(cfg *config.Config) *App {
 	messageRepository := msgRepo.NewMessageRepository(db)
 	chatRepository := msgRepo.NewChatRepository(db)
 
-	// Galgame wiki client (shared — user service needs it too).
-	gc := galgameClient.NewGalgameClient(cfg.GalgameWiki.BaseURL)
+	// Galgame wiki client (shared — user service needs it too). The
+	// Basic-auth variant carries OAuth Client credentials so the
+	// wiki-message sync cron can call /galgame/messages/feed (service
+	// identity). Bearer-required endpoints still use a per-request token
+	// forwarded from the user session.
+	gc := galgameClient.NewGalgameClientWithBasicAuth(
+		cfg.GalgameWiki.BaseURL,
+		cfg.OAuth.ClientID,
+		cfg.OAuth.ClientSecret,
+	)
 
 	// OAuth client (used by auth service).
 	oauthClient := oauth.NewClient(cfg.OAuth)
@@ -195,6 +205,16 @@ func New(cfg *config.Config) *App {
 		galgameLocalRepo, galgameInteractionRepo, galgameListRepo,
 		galgameResourceMetaRepo, galgameDetailRatingRepo, userStateRepo, gc, uc,
 	)
+	// Submission flow: submit / claim / patch-draft / delete-draft proxies
+	// + local moemoepoint side effects. Per docs/galgame_wiki/07-submission.md.
+	galgameSubmissionSvc := galgameService.NewSubmissionService(gc, galgameLocalRepo, userStateRepo)
+
+	// Wiki message stream: user notifications + admin queue + per-user
+	// "read up to" cursor. The cron-driven ingestion lives in
+	// galgameMessageSync below.
+	galgameMessageRepo := galgameRepo.NewWikiMessageRepository(db)
+	galgameMessageSvc := galgameService.NewWikiMessageService(gc, galgameMessageRepo)
+	galgameMessageSync := galgameService.NewWikiMessageSync(gc, galgameLocalRepo, userStateRepo, rdb)
 
 	// Website
 	websiteRepository := websiteRepo.NewWebsiteRepository(db)
@@ -273,6 +293,8 @@ func New(cfg *config.Config) *App {
 			galgameSeriesSvc, galgameOfficialSvc, galgameEngineSvc, galgameTagSvc,
 		),
 		GalgameWikiHandler:         galgameHandler.NewWikiHandler(galgameWikiSvc),
+		GalgameSubmissionHandler:   galgameHandler.NewSubmissionHandler(galgameSubmissionSvc),
+		GalgameMessageHandler:      galgameHandler.NewWikiMessageHandler(galgameMessageSvc),
 		ActivityHandler:            activityHandler.NewActivityHandler(activityService.NewActivityService(activityRepo.NewActivityRepository(db), gc, uc)),
 		ImageHandler:               imageHandler.NewImageHandler(imageService.NewImageService(imageRepo.NewImageRepository(db), s3Client)),
 		SearchHandler:              searchHandler.NewSearchHandler(searchService.NewSearchService(searchRepo.NewSearchRepository(db), gc, galgameEnricher, uc)),
@@ -281,7 +303,7 @@ func New(cfg *config.Config) *App {
 		ToolsetCommentHandler:      toolsetHandler.NewCommentHandler(toolsetCommentSvc),
 		ToolsetResourceHandler:     toolsetHandler.NewResourceHandler(toolsetResourceSvc),
 		ToolsetUploadHandler:       toolsetHandler.NewUploadHandler(toolsetUploadSvc),
-		CronStop:                   cronPkg.Start(db, rdb),
+		CronStop:                   cronPkg.Start(db, rdb, galgameMessageSync.Run),
 	}
 
 	// Fiber

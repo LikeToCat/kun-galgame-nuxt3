@@ -4,6 +4,7 @@ import (
 	"kun-galgame-api/internal/galgame/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // GalgameRepository holds core local DB queries for the galgame table:
@@ -73,7 +74,33 @@ func (r *GalgameRepository) IncrementView(id int) {
 // ──────────────────────────────────────────
 
 // CreateLocalStub creates the empty galgame row on the local side after wiki
-// creation succeeds, inside the given transaction.
+// creation succeeds, inside the given transaction. Used by paths that
+// transition a galgame to a publicly visible status (admin direct create,
+// claim, approved cron event) so it shows up in the kungal list query
+// driven by the local table.
 func (r *GalgameRepository) CreateLocalStub(tx *gorm.DB, galgameID int) {
-	tx.Create(&model.GalgameLocal{ID: galgameID})
+	tx.Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&model.GalgameLocal{ID: galgameID})
+}
+
+// EnsureLocalStub idempotently INSERTs a zero-stat row. Called from
+// interaction paths (like / favorite / comment / resource create) as a
+// defensive measure — pending submissions don't get a stub at submit time
+// (per decision 2 in the kungal/wiki integration plan), so the first
+// interaction must create one or the subsequent counter UPDATE would
+// silently affect 0 rows.
+func (r *GalgameRepository) EnsureLocalStub(tx *gorm.DB, galgameID int) {
+	tx.Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&model.GalgameLocal{ID: galgameID})
+}
+
+// DeleteLocalStub removes the local row for a galgame and lets CASCADE
+// clean up the local interaction children (galgame_like, galgame_favorite,
+// galgame_comment, galgame_resource, etc.). Idempotent — no-op when the row
+// was never lazy-created. Used by:
+//   - DeleteDraft (defensive — submitter may have self-interacted)
+//   - wiki message sync cron on "banned" events
+//   - wiki message sync cron on hard-deleted galgames (msg.Galgame == nil)
+func (r *GalgameRepository) DeleteLocalStub(galgameID int) {
+	r.db.Where("id = ?", galgameID).Delete(&model.GalgameLocal{})
 }

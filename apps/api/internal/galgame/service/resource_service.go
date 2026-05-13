@@ -13,6 +13,7 @@ import (
 	"kun-galgame-api/pkg/utils"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ResourceService struct {
@@ -199,6 +200,11 @@ func (s *ResourceService) CreateResource(
 	}
 
 	txErr := s.resourceRepo.DB().Transaction(func(tx *gorm.DB) error {
+		// Lazy-create stub before incrementing — see decision 2 in the
+		// kungal/wiki integration plan (pending submissions don't get
+		// a kungal stub, so the first interaction must INSERT one).
+		tx.Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&model.GalgameLocal{ID: req.GalgameID})
 		if err := s.resourceRepo.Create(tx, res); err != nil {
 			return err
 		}
